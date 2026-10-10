@@ -1,0 +1,31 @@
+# Mosquitto (MQTT) + SQL Server optionnel (profil "mssql").
+#   docker compose up -d                 -> broker MQTT seul
+#   docker compose --profile mssql up -d -> broker + SQL Server
+# Sans Docker, le serveur fonctionne avec le repli HTTP POST /api/ingest.
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: hackcure-mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: hackcure-mssql
+    profiles: ["mssql"]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-HackCure!2026}"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql-data:/var/opt/mssql
+    restart: unless-stopped
+
+volumes:
+  mssql-data:
