@@ -85,6 +85,7 @@ class VirtualRoom:
     persons: int = 1
     staff_inside: bool = False
     staff_role: Optional[str] = None  # nurse | duty_doctor | psychiatrist… (avatar affiché dans la 3D)
+    occupied: bool = True  # False : chambre libre, rien n'est publié
     seizure_motion: float = 0.0  # 0..1 : mouvements rythmiques anormaux vus par la caméra (variance des keypoints)
     staff_since: Optional[float] = None
     patient_track: int = 1
@@ -423,6 +424,8 @@ class SimEngine:
         self._run_resolutions()
         n = 0
         for room in self.rooms.values():
+            if not room.occupied:
+                continue
             room.step(dt, self.sim_time, self.is_night)
             for topic, payload in room.messages(self.sim_time, self.source):
                 self.publish(topic, payload)
@@ -572,6 +575,18 @@ class SimEngine:
             pass
         else:
             raise ValueError(f"Action de scénario inconnue : {action}")
+
+    def set_occupied(self, room: str, occupied: bool) -> None:
+        """Chambre libérée (sortie) ou de nouveau occupée (admission) : un nouveau patient repart d'un état de repos."""
+        r = self.rooms.get(str(room))
+        if not r:
+            return
+        r.occupied = occupied
+        if occupied:
+            r.trends.clear()
+            r.__post_init__()
+            r.set_posture("lying_bed", "awake_bed", "bed")
+            r.expression, r.staff_inside, r.persons, r.seizure_motion = "neutral", False, 1, 0.0
 
     def set_room_virtual(self, room: str, virtual: bool) -> None:
         if room in self.rooms:

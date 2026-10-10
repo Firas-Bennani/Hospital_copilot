@@ -65,8 +65,12 @@ def psych_detail(patient_id: str, session: Session = Depends(get_session), user:
     p = _patient(session, patient_id)
     adm = session.exec(select(Admission).where(Admission.patient_id == p.id, Admission.discharged_at.is_(None))).first()
     full = user.can("view_psych_answers")
-    scores = session.exec(select(PsychScore).where(PsychScore.patient_pk == p.id).order_by(PsychScore.id.desc()).limit(120)).all()
-    q = session.exec(select(PsychQuestionnaire).where(PsychQuestionnaire.patient_pk == p.id).order_by(PsychQuestionnaire.id.desc())).first()
+    # le séjour en cours d'abord : un patient réadmis a un nouveau questionnaire et une nouvelle série de scores
+    sq, qq = select(PsychScore).where(PsychScore.patient_pk == p.id), select(PsychQuestionnaire).where(PsychQuestionnaire.patient_pk == p.id)
+    if adm:
+        sq, qq = sq.where(PsychScore.admission_id == adm.id), qq.where(PsychQuestionnaire.admission_id == adm.id)
+    scores = session.exec(sq.order_by(PsychScore.id.desc()).limit(120)).all()
+    q = session.exec(qq.order_by(PsychQuestionnaire.id.desc())).first()
     rx = session.exec(select(PsychPrescription).where(PsychPrescription.patient_pk == p.id).order_by(PsychPrescription.id.desc())).all()
     latest = score_out(scores[0]) if scores else None
     if latest and not full:  # infirmier : état et consignes, sans le détail des réponses

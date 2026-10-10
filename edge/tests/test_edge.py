@@ -176,7 +176,8 @@ def test_edge_end_to_end_fake_messages_validate():
     assert any(s["activity"] == "fall" and s["posture"] == "on_floor" for s in states)
     assert any(s["source"] == "edge-fake" for s in states)
     alarms = [p for t, p in sent if t.endswith("/safety/alarm")]
-    assert alarms and alarms[0]["reason"] == "fall" and "buzzer" in alarms[0]["localActionTaken"]
+    falls = [a for a in alarms if a["reason"] == "fall"]  # la nuit, une alarme « lever nocturne » précède la chute
+    assert falls and "buzzer" in falls[0]["localActionTaken"]
     ok, state, err = edge._on_command("window", "open", None, "owner", "c1")
     assert ok and state == "open"
 

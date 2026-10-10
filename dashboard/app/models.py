@@ -541,3 +541,38 @@ class Prediction(SQLModel, table=True):
     factors_json: str = "[]"
     ai_json: str = ""
     ts: datetime = Field(default_factory=utcnow, index=True)
+
+
+# ─── V2 étape 5 : ambulances ──────────────────────────────────────────────────
+class AmbulanceMission(SQLModel, table=True):
+    """Fiche d'intervention d'une ambulance : patient, urgence, position, ETA, chambre réservée."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    ambulance_code: str = "AMB-01"
+    patient_pk: Optional[int] = Field(default=None, foreign_key="patient.id")
+    patient_id: str = ""
+    patient_name: str = ""
+    age: Optional[int] = None
+    sex: str = ""
+    reason: str = ""
+    emergency_type: str = "other"  # trauma | cardio | stroke | respiratory | obstetric | infection | other
+    severity: int = 2  # 1 urgence vitale … 3 urgence relative
+    vitals_json: str = "{}"  # constantes transmises par l'équipe de l'ambulance
+    mode: str = "sim"  # sim (trajet simulé) | gps (téléphone)
+    status: str = Field(default="en_route", index=True)  # en_route | arrived | admitted | cancelled
+    departed_at: datetime = Field(default_factory=utcnow, index=True)
+    eta_at: Optional[datetime] = None
+    arrived_at: Optional[datetime] = None
+    reserved_room: Optional[str] = None
+    lat: float = 0.0
+    lon: float = 0.0
+    heading: float = 0.0
+    speed_kmh: float = 0.0
+    remaining_m: float = 0.0
+    progress: float = 0.0
+    route_json: str = "[]"
+    route_label: str = ""
+    track_token: str = Field(default="", index=True)
+    preparation_json: str = "{}"
+    ai_json: str = ""
+    admission_id: Optional[int] = None

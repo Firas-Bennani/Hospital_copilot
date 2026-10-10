@@ -186,8 +186,22 @@ def discharge(patient_id: str, session: Session = Depends(get_session), user: au
     audit(session, user, "discharge", "patient", p.id, {"room": adm.room_code})
     session.commit()
     state.unregister_patient(p.patient_id)
-    handler.room_state(adm.room_code)["patient_id"] = None
+    vacate_room(adm.room_code)
     return _out(session, p)
+
+
+def vacate_room(room: str) -> None:
+    """Chambre libre : plus de patient, plus de constantes ; le simulateur embarqué cesse de publier pour elle."""
+    rs = handler.room_state(room)
+    rs.update(patient_id=None, posture="absent", activity="out_of_room", zone="none", persons=0, expression="neutral", skinTempC=None, vitals={}, devices={}, staffPresent=False, staffRole=None, vacant=True)
+    try:
+        from ..sim import embedded
+
+        if embedded.engine is not None:
+            embedded.engine.set_occupied(room, False)
+    except Exception:
+        pass
+    handler._dirty_rooms.add(room)
 
 
 def _admit(session: Session, p: Patient, room: str, reason: str, doctor: str) -> Admission:

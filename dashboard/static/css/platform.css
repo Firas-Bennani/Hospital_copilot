@@ -306,3 +306,12 @@ body:has(#hf-panel.hf-walking) #kpi-bar { display: none; }   /* visite à pied :
 .pred-gauge { height: 8px; border-radius: 4px; background: rgba(148,163,184,.2); margin: 5px 0; overflow: hidden; } .pred-gauge span { display: block; height: 100%; transition: width .4s; }
 .pred-detail { padding: 6px 0; border-bottom: 1px solid rgba(148,163,184,.1); font-size: 13px; }
 @media (max-width: 1500px) { .pred-grid { grid-template-columns: repeat(3, 1fr); } }
+
+/* ─── Ambulances ─── */
+.map-pin { width: 34px; height: 34px; display: grid; place-items: center; font-size: 20px; border-radius: 50%; background: #fff; border: 2px solid #1e293b; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+.map-pin.amb { border-color: #ef4444; animation: amb-pulse 1s infinite; } .map-pin.clinic { border-color: #0ea5e9; }
+@keyframes amb-pulse { 50% { box-shadow: 0 0 0 8px rgba(239,68,68,.25); } }
+.map-tip { background: rgba(15,23,42,.92); color: #e2e8f0; border: 1px solid #334155; font-size: 11px; font-weight: 600; }
+.map-tip::before { display: none; }
+.mission.en_route { border-color: rgba(239,68,68,.6); } .eta-big { float: right; font-size: 18px; font-weight: 800; color: #fca5a5; font-variant-numeric: tabular-nums; }
+.leaflet-container { background: #1e293b; font: inherit; }

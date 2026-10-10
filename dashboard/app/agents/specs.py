@@ -217,3 +217,20 @@ spec(
             "Rappelle que c'est une estimation de prototype, non validée cliniquement. Ne modifie ni le risque ni la fenêtre ; n'annonce pas la crise comme certaine."),
     format='{"explanation": "3 phrases au plus", "conduct": ["conduite à tenir"]}', required=["explanation"], mock=_mock_prediction,
 )
+
+
+# ─── AmbulanceAgent ───────────────────────────────────────────────────────────
+def _mock_ambulance(ctx: dict[str, Any]) -> dict[str, Any]:
+    m = ctx.get("mission") or {}
+    return {"briefing": f"{m.get('patient_name', 'Patient')} ({m.get('age') or '?'} ans) arrive dans environ {m.get('eta_minutes', '?')} min pour {str(m.get('emergency_label', 'une urgence')).lower()} "
+                        f"({m.get('severity_label', '')}) : {m.get('reason', '')}. Chambre {m.get('reserved_room')} réservée. Allergies : {ctx.get('allergies') or 'non connues'}.",
+            "preparation": ctx.get("preparation_standard") or {"materiel": [], "equipe": [], "examens": []}}
+
+
+spec(
+    "ambulance-dispatch", agent="AmbulanceAgent", title="Briefing d'arrivée d'une ambulance",
+    system=("Une ambulance vient de partir avec un patient ; une chambre est réservée à la clinique. À partir de la fiche d'intervention (motif, type d'urgence, gravité, constantes transmises, antécédents et allergies s'ils sont connus) "
+            "et de la préparation standard fournie, rédige un briefing de 3 phrases au plus pour l'équipe qui va accueillir le patient, puis la préparation adaptée à CE patient : matériel, équipe à prévenir, examens à anticiper. "
+            "Reste dans le cadre de la préparation standard (tu peux l'ordonner et la préciser) ; signale toute allergie ou tout antécédent qui change l'accueil."),
+    format='{"briefing": "3 phrases au plus", "preparation": {"materiel": ["..."], "equipe": ["..."], "examens": ["..."]}}', required=["briefing"], mock=_mock_ambulance,
+)

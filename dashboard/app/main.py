@@ -135,6 +135,7 @@ def create_app() -> FastAPI:
         "care",
         "psych",
         "predictions",
+        "ambulances",
         "print",
     ):
         mod = _import_optional(f".api.{name}")

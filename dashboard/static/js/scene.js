@@ -836,6 +836,7 @@ const HospitalScene = (() => {
         [-1, 1].forEach(sd => mesh(new THREE.SphereGeometry(0.1, 8, 6), EX.bulb, 2.64, 0.8, sd * 0.65, g, false));
         [-1.5, 1.5].forEach(wx => [-1, 1].forEach(sd => wheel(g, wx, 0.42, sd * 0.95, 0.42)));
         g.position.set(x, GY + 0.01, z); g.rotation.y = rotY; scene.add(g);
+        scene.userData.ambulance = g;   // ambulance-3d.js anime son arrivée (V2)
     }
     function buildCar(x, z, rotY, color) {
         const g = new THREE.Group(), body = std(color, { roughness: 0.3, metalness: 0.3 });
