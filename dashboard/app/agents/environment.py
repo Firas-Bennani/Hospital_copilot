@@ -15,13 +15,14 @@ from .base import Agent
 
 COOLDOWN_S = 90.0
 MANUAL_HOLD_S = 600.0
+COMFORT_LOW, COMFORT_HIGH = 20.0, 23.5  # plage de confort visée pour un patient fébrile
 
 
 class EnvironmentAgent(Agent):
     name = "EnvironmentAgent"
     description = "Veille au confort thermique et pilote fenêtre, chauffage et climatisation (sans contredire les règles locales de l'edge)."
     patterns = ["hackcure/room/+/env", "hackcure/room/+/cmd/ack", "hackcure/room/+/cmd/+", "internal/reset"]
-    tick_interval = 60.0
+    tick_interval = 5.0
 
     def __init__(self) -> None:
         super().__init__()
@@ -29,10 +30,14 @@ class EnvironmentAgent(Agent):
         self.manual_until: dict[str, float] = {}
         self.local_refusal: dict[str, float] = {}
         self.pending_manual: dict[tuple[str, str], tuple[str, str, str]] = {}
+        self.rechecks: dict[str, tuple[float, float, list[str]]] = {}  # room -> (échéance, température de départ, équipements actionnés)
+        self.fragile_cache: dict[str, tuple[float, bool, str]] = {}
 
     async def handle(self, ev: Event) -> None:
         if ev.topic == "internal/reset":
             self.last_action.clear()
+            self.manual_until.clear()
+            self.rechecks.clear()
             return
         p = ev.payload
         room, kind, d = p["room"], p["kind"], p["data"]
@@ -68,14 +73,14 @@ class EnvironmentAgent(Agent):
         alarm = rs.get("localAlarm")
         if alarm and alarm.get("reason") in ("fall", "critical"):
             return  # ne jamais interférer pendant une alarme locale
+        from .fever import hold_rooms
+
+        if room in hold_rooms:
+            return  # fièvre vraie : le bilan clinique et biologique passe avant tout réglage de confort
 
         actions: list[tuple[str, str, str]] = []
-        if temp > 27.0 and eq.get("ac") != "on":
-            actions.append(("ac", "on", f"température {temp:.1f} °C > 27 °C"))
-            if eq.get("window") == "open":
-                actions.append(("window", "close", "climatisation active"))
-            if eq.get("heater") == "on":
-                actions.append(("heater", "off", "climatisation active"))
+        if temp > 27.0 and eq.get("ac") != "on" and eq.get("window") != "open":
+            actions = self.cooling_actions(room, temp, eq)
         elif temp < 19.0 and eq.get("heater") != "on":
             actions.append(("heater", "on", f"température {temp:.1f} °C < 19 °C"))
             if eq.get("window") == "open":
@@ -92,18 +97,115 @@ class EnvironmentAgent(Agent):
         if not actions:
             return
         self.last_action[room] = now
-        from ..commands import send_command
-
         async with self.working("acting"):
-            results = []
-            for equipment, action, why in actions:
-                r = await send_command(room, equipment, action, requested_by=self.name, reason=why)
-                results.append(f"{equipment} {action} → {'ack ' + str(r['ack'].get('state')) if r['ok'] else 'sans ack'} ({r['transport']})")
+            results = await self.run_actions(room, actions)
             await self.log(room, input=f"tempC={temp:.1f}, porte {'ouverte' if door_open else 'fermée'}, équipements {eq}",
-                           reasoning="Règles : > 27 °C → clim ; < 19 °C → chauffage ; fenêtre fermée si l'un est actif ; 21–25 °C → repos. Commande manuelle récente ou règle locale → abstention.",
+                           reasoning="Règles : > 27 °C → rafraîchir (fenêtre si l'air extérieur est plus frais et le patient non fragile, sinon clim) ; < 19 °C → chauffage ; 21–25 °C → repos. Commande manuelle récente, règle locale ou bilan de fièvre en cours → abstention.",
                            output="; ".join(results))
 
+    # ── choix du moyen de rafraîchissement ───────────────────────────────────
+    def fragile(self, room: str) -> tuple[bool, str]:
+        """Patient pour qui on évite le courant d'air d'une fenêtre ouverte (grand âge, BPCO)."""
+        cached = self.fragile_cache.get(room)
+        if cached and time.time() - cached[0] < 300:
+            return cached[1], cached[2]
+        frag, why = False, ""
+        try:
+            from ..db import session_scope
+            from ..risks import patient_context
+
+            with session_scope() as s:
+                pat = patient_context(s, room).get("patient") or {}
+            hist = (pat.get("history") or "").lower()
+            if (pat.get("age") or 0) >= 80:
+                frag, why = True, f"patient de {pat['age']} ans"
+            elif "bpco" in hist:
+                frag, why = True, "patient BPCO"
+        except Exception:
+            pass
+        self.fragile_cache[room] = (time.time(), frag, why)
+        return frag, why
+
+    def cooling_actions(self, room: str, temp: float, eq: dict[str, Any]) -> list[tuple[str, str, str]]:
+        from ..config import settings
+
+        outdoor = (handler.room_state(room).get("env") or {}).get("outdoorC")
+        if outdoor is None:
+            outdoor = settings.outdoor_temp_c
+        frag, why = self.fragile(room)
+        actions: list[tuple[str, str, str]] = []
+        if eq.get("heater") == "on":
+            actions.append(("heater", "off", f"chambre à {temp:.1f} °C"))
+        if outdoor <= temp - 3.0 and not frag:
+            actions.append(("window", "open", f"chambre à {temp:.1f} °C, {outdoor:.0f} °C dehors : aération"))
+        else:
+            reason = f"chambre à {temp:.1f} °C ; " + (f"{why} : pas de courant d'air" if frag else f"{outdoor:.0f} °C dehors : aérer ne suffirait pas")
+            if eq.get("window") == "open":
+                actions.append(("window", "close", "climatisation"))
+            actions.append(("ac", "on", reason))
+        return actions
+
+    async def run_actions(self, room: str, actions: list[tuple[str, str, str]]) -> list[str]:
+        from ..commands import send_command
+
+        out = []
+        for equipment, action, why in actions:
+            r = await send_command(room, equipment, action, requested_by=self.name, reason=why)
+            out.append(f"{equipment} {action} ({why}) → {'ack ' + str(r['ack'].get('state')) if r['ok'] else 'sans ack'}")
+        self.last_action[room] = time.time()
+        return out
+
+    async def thermal_rise(self, room: str, a: dict[str, Any]) -> None:
+        """Simple hausse thermique signalée par le FeverAgent : action directe, puis revérification."""
+        from ..config import settings
+
+        rs = handler.room_state(room)
+        eq, temp = rs.get("equipment", {}), a.get("env")
+        if time.time() < self.manual_until.get(room, 0):
+            await self.log(room, input=f"hausse thermique, chambre {temp} °C", reasoning="Une commande manuelle récente a la main sur cette chambre : abstention.", output="aucune action")
+            return
+        actions = self.cooling_actions(room, float(temp), eq) if temp is not None and float(temp) >= 25.5 and eq.get("ac") != "on" and eq.get("window") != "open" else []
+        async with self.working("acting"):
+            results = await self.run_actions(room, actions) if actions else []
+            self.rechecks[room] = (time.time() + settings.thermal_recheck_s, float(temp) if temp is not None else 0.0, [e for e, _, _ in actions])
+            await self.log(room, input=f"simple hausse thermique : {a.get('criterion')}",
+                           reasoning="Pas de fièvre (température centrale normale) : action d'ambiance directe, sans médecin ni bilan. Fenêtre si l'air extérieur est nettement plus frais et que le patient le tolère, sinon climatisation.",
+                           output=("; ".join(results) if results else "ambiance déjà prise en charge ou chambre tempérée : surveillance") + f" — revérification dans {settings.thermal_recheck_s:.0f} s")
+
+    async def comfort_for_fever(self, room: str) -> str:
+        """Fièvre vraie, après le bilan clinique et biologique : réglage de CONFORT (ce n'est pas un traitement)."""
+        rs = handler.room_state(room)
+        eq, temp = rs.get("equipment", {}), (rs.get("env") or {}).get("tempC")
+        if temp is None:
+            note = "Température de la chambre non mesurée : aucun réglage."
+            actions: list[tuple[str, str, str]] = []
+        elif temp > COMFORT_HIGH:
+            actions = self.cooling_actions(room, float(temp), eq) if eq.get("ac") != "on" and eq.get("window") != "open" else []
+            note = f"Chambre à {temp:.1f} °C : rafraîchissement doux pour le confort du patient fébrile."
+        elif temp < COMFORT_LOW:
+            actions = [("heater", "on", f"chambre à {temp:.1f} °C : éviter les frissons")] if eq.get("heater") != "on" else []
+            note = f"Chambre à {temp:.1f} °C : léger chauffage pour éviter les frissons."
+        else:
+            actions, note = [], f"Chambre à {temp:.1f} °C, déjà dans la plage de confort ({COMFORT_LOW:.0f}–{COMFORT_HIGH:.1f} °C) : aucun réglage nécessaire."
+        async with self.working("acting"):
+            results = await self.run_actions(room, actions) if actions else []
+            if results:
+                note += " " + "; ".join(results) + "."
+            note += " Mesure de confort, pas un traitement de la fièvre."
+            await self.log(room, input=f"fièvre vraie en chambre {room} : bilan clinique fait, bilan biologique validé", reasoning="Le confort ne vient qu'après le bilan. Régler la chambre ne traite pas la fièvre et ne résout aucun risque clinique.", output=note)
+        return note
+
     async def on_tick(self) -> None:
+        now = time.time()
+        for room, (due, start, touched) in list(self.rechecks.items()):
+            if now < due:
+                continue
+            del self.rechecks[room]
+            t = handler.room_state(room)["env"].get("tempC")
+            ok = t is not None and float(t) <= 25.5
+            await self.log(room, input=f"revérification après hausse thermique : chambre {t} °C (départ {start:.1f} °C)",
+                           reasoning="Contrôle de l'effet de la mesure d'ambiance quelques minutes plus tard.",
+                           output="confort rétabli" if ok else "chambre encore chaude : mesure maintenue, nouvelle évaluation au prochain cycle", status="ok" if ok else "error")
         for room in handler.ROOMS:
             t = handler.room_state(room)["env"].get("tempC")
             if t is not None:

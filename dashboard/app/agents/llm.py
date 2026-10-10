@@ -203,7 +203,7 @@ class AnthropicLlm(BaseLlm):
     async def complete_text(self, system: str, user: str, max_tokens: int = 1400) -> Optional[str]:
         await self.ensure_client()
         resp = await self.client.messages.create(
-            model=self.model, max_tokens=max_tokens, system=system,
+            model=self.model, max_tokens=max(max_tokens, 8000), system=system,  # le modèle consomme des tokens de réflexion avant de répondre
             messages=[{"role": "user", "content": user}],
         )
         return "".join(getattr(b, "text", "") for b in resp.content)

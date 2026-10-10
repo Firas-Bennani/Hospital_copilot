@@ -20,7 +20,8 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-WORKFLOWS = ["risk-triage", "risk-verify", "shift-report", "pharmacy-alerts"]
+# tous les workflows du dossier : les 4 de la V1 + un par agent V2 (générés par n8n/build_agent_workflows.py)
+WORKFLOWS = sorted(p.stem for p in (ROOT / "n8n" / "workflows").glob("*.json"))
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -141,7 +142,7 @@ def main() -> int:
     if args.check:
         for name in WORKFLOWS:
             w = current.get(name)
-            print(f"  {name:16} {'ACTIF' if w and w.get('active') else 'inactif' if w else 'ABSENT'}" + (f"  ({w['id']})" if w else ""))
+            print(f"  {name:22} {'ACTIF' if w and w.get('active') else 'inactif' if w else 'ABSENT'}" + (f"  ({w['id']})" if w else ""))
         return 0 if all(current.get(n, {}).get("active") for n in WORKFLOWS) else 1
 
     print(f"n8n : {api.base}")
@@ -167,7 +168,7 @@ def main() -> int:
             code, a = api.call("POST", f"/workflows/{wid}/activate")
             state = "ACTIF" if code < 300 and a.get("active", True) else f"NON ACTIVÉ (HTTP {code} {a.get('message', '')})"
             failed = failed or code >= 300
-        print(f"  ✓ {name:16} {'mis à jour' if old else 'créé'} — {state}  →  {base}/workflow/{wid}")
+        print(f"  ✓ {name:22} {'mis à jour' if old else 'créé'} — {state}  →  {base}/workflow/{wid}")
     print("Terminé." if not failed else "Terminé avec des erreurs.")
     return 1 if failed else 0
 

@@ -251,3 +251,12 @@ body.view-open #hf-panel, body.view-open #hf-hud { display: none !important; }
 body:has(#hf-panel.hf-walking) #kpi-bar { display: none; }   /* visite à pied : le HUD occupe le bas de l'écran */
 .kpi.kpi-alert { border-color: rgba(239,68,68,.7); box-shadow: 0 0 14px rgba(239,68,68,.35); } .kpi.kpi-alert .kpi-value { color: #fca5a5; }
 .tag-ok { background: rgba(34,197,94,.18); color: #86efac; }
+
+/* ─── Parcours fièvre ─── */
+.fever-panel { margin: 12px 0; padding: 10px 12px; border: 1px solid rgba(249,115,22,.45); border-radius: var(--radius-md); background: rgba(249,115,22,.05); }
+.fever-panel h3 { margin-top: 12px; }
+.fever-steps { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.fever-step { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border-subtle); color: var(--text-muted); }
+.fever-step.done { color: #86efac; border-color: rgba(34,197,94,.5); }
+.fever-step.current { color: #fed7aa; border-color: #f97316; background: rgba(249,115,22,.18); }
+.fever-list { margin: 4px 0 0 16px; padding: 0; }

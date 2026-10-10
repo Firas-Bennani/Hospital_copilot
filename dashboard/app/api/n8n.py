@@ -205,6 +205,37 @@ async def n8n_log(body: AgentLogIn, session: Session = Depends(get_session), _: 
     return {"id": row.id}
 
 
+# ─── Résultat d'un workflow d'agent V2 (raisonnement LLM) ────────────────────
+class AgentResultIn(BaseModel):
+    workflow: str
+    ref: str
+    result: Optional[dict[str, Any]] = None
+    context: Optional[dict[str, Any]] = None
+    fallback: bool = False
+    error: Optional[str] = None
+    model: Optional[str] = None
+    anthropic_id: Optional[str] = None
+    room: Optional[str] = None
+    risk_id: Optional[int] = None
+    duration_ms: int = 0
+
+
+@router.post("/api/agents/result")
+async def agent_result(body: AgentResultIn, _: authlib.CurrentUser = Depends(authlib.can_manage_risks)):
+    """Appelé par n8n à la fin du raisonnement d'un agent : le résultat est remis au gestionnaire Python de l'agent."""
+    from .. import orchestration
+    from ..agents.specs import validate
+
+    result = body.result
+    error = body.error or (validate(body.workflow, result) if body.workflow in orchestration._handlers else None)
+    meta = {"source": "n8n", "fallback": body.fallback or error is not None, "error": error, "provider": f"anthropic {body.model or n8n.settings.llm_model} (n8n)", "anthropic_id": body.anthropic_id,
+            "room": body.room, "risk_id": body.risk_id, "duration_ms": body.duration_ms, "context": body.context}
+    try:
+        return await orchestration.deliver(body.workflow, body.ref, None if meta["fallback"] else result, meta)
+    except KeyError:
+        raise HTTPException(404, f"Workflow d'agent inconnu : {body.workflow}")
+
+
 # ─── Statut et déclencheurs manuels ──────────────────────────────────────────
 @router.get("/api/n8n/status")
 async def n8n_status(_: authlib.CurrentUser = Depends(authlib.get_current_user)):

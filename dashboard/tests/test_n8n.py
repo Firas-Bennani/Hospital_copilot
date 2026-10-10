@@ -71,7 +71,7 @@ def test_plan_ack_escalate_resolve_flow(client, service, login):
     # verdict de risk-verify
     v = service.post(f"/api/risks/{rid}/resolve", json={"verified": True, "justification": "Patient assis au lit, FC 82 bpm.", "source": "n8n:risk-verify"}).json()
     assert v["status"] == "resolved" and v["verified_at"] and "n8n:risk-verify" in v["resolved_by"]
-    assert client.get("/api/rooms/states").json()["103"]["riskLevel"] in ("none", "low", "medium", "high")
+    assert not [x for x in client.get("/api/risks?room=103&open_only=1").json() if x["id"] == rid]
 
 
 def test_plan_fallback_is_labelled_and_persistent_escalates(client, service):

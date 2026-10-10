@@ -45,6 +45,7 @@ const CommandView = (() => {
                 <button class="btn btn-success" id="cmd-resolve">✅ Marquer résolu (vérification ${r.handled_by === 'n8n' ? 'n8n risk-verify' : 'FollowUpAgent'})</button>
                 <button class="btn btn-warn" id="cmd-escalate">⬆️ Escalader au médecin</button>
             </div>` : ''}
+            ${r.type === 'fever' ? '<div id="fever-panel-host"></div>' : ''}
             ${r.visits && r.visits.length ? `<h3>Visites</h3>${r.visits.map(v => `<div class="detail-row"><span class="detail-label">${Api.fmtTime(v.started_at)} → ${v.ended_at ? Api.fmtTime(v.ended_at) : 'en cours'}</span><span class="detail-value">${v.persons} pers.</span></div>`).join('')}` : ''}`;
     }
 
@@ -87,6 +88,8 @@ const CommandView = (() => {
         const plan = document.getElementById('cmd-plan');
         const r = rows.find(x => x.id === selected) || (selected ? window._cmdSelectedCache : null);
         plan.innerHTML = planHtml(r);
+        const feverHost = plan.querySelector('#fever-panel-host');
+        if (feverHost && window.FeverPanel) FeverPanel.mount(feverHost, r.id); else if (window.FeverPanel) FeverPanel.unmount();
         plan.querySelectorAll('input[data-step]').forEach(cb => cb.addEventListener('change', async () => {
             try { const d = await Api.patch(`/api/risks/${r.id}/steps/${cb.dataset.step}`, { done: cb.checked }); merge(d); paint(); } catch (e) { Api.toast(e.message, 'critical'); }
         }));

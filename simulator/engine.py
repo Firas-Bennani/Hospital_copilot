@@ -92,6 +92,8 @@ class VirtualRoom:
     skin_temp: float = 36.6
     thermal_calibrated: bool = False
     env_temp: float = 22.5
+    env_offset: float = 0.0  # source de chaleur ou de froid dans la chambre (soleil, radiateur bloqué…) en °C
+    outdoor_temp: float = 18.0
     env_hum: float = 45.0
     door_open: bool = False
     motion: bool = False
@@ -143,6 +145,9 @@ class VirtualRoom:
             base["sys"] += 10
         # tendances actives
         for metric, tr in list(self.trends.items()):
+            if metric not in self.vitals:
+                del self.trends[metric]
+                continue
             if tr.remaining > 0:
                 k = min(1.0, dt / tr.remaining)
                 self.vitals[metric] += (tr.target - self.vitals[metric]) * k
@@ -167,7 +172,9 @@ class VirtualRoom:
         self.vitals["temp"] = max(34.0, min(42.0, self.vitals["temp"]))
         self.vitals["rr"] = max(6, min(45, self.vitals["rr"]))
         # température cutanée (caméra thermique) suit la température centrale
-        self.skin_temp += ((self.vitals["temp"] - 0.4) - self.skin_temp) * min(1.0, dt / 60.0) + random.gauss(0, 0.02)
+        # la peau suit la température centrale, et se réchauffe aussi dans une chambre trop chaude (sans fièvre)
+        skin_target = self.vitals["temp"] - 0.4 + max(0.0, self.env_temp - 25.0) * 0.3
+        self.skin_temp += (skin_target - self.skin_temp) * min(1.0, dt / 60.0) + random.gauss(0, 0.02)
 
         # appareils
         if self.device_status["iv_pump"] == "running" and not self.occlusion:
@@ -178,17 +185,14 @@ class VirtualRoom:
             self.transfusion_volume = max(0.0, self.transfusion_volume - p.transfusion_rate * dt / 3600.0)
 
         # environnement : dérive + effet des équipements
-        target_env = 22.5 + (1.5 if night is False else -0.5)
+        target_env = 22.5 + (1.5 if night is False else -0.5) + self.env_offset
         if self.equipment.get("heater") == "on":
             target_env += 4.5
         if self.equipment.get("ac") == "on":
             target_env -= 4.5
         if self.equipment.get("window") == "open":
-            target_env -= 2.0
-        for metric, tr in list(self.trends.items()):
-            if metric == "env_temp":
-                target_env = tr.target
-        self.env_temp += (target_env - self.env_temp) * min(1.0, dt / 240.0) + random.gauss(0, 0.02)
+            target_env += (self.outdoor_temp - target_env) * 0.45  # l'air extérieur tire la chambre vers sa température
+        self.env_temp += (target_env - self.env_temp) * min(1.0, dt / 60.0) + random.gauss(0, 0.02)
         self.env_hum += (45 - self.env_hum) * min(1.0, dt / 600.0) + random.gauss(0, 0.1)
         self.motion = self.activity not in ("sleeping",) and (random.random() < 0.6 or self.staff_inside)
 
@@ -294,7 +298,7 @@ class VirtualRoom:
             if self.due("thermal", 1.0, now):
                 out.append((f"{pre}/thermal", {"ts": ts, "source": source, "skinTempC": round(self.skin_temp, 2), "maxTempC": round(self.skin_temp + 0.3, 2), "calibrated": self.thermal_calibrated}))
             if self.due("env", 5.0, now):
-                out.append((f"{pre}/env", {"ts": ts, "source": source, "tempC": round(self.env_temp, 2), "humidity": round(self.env_hum, 1), "motion": self.motion, "doorOpen": self.door_open or self.staff_inside}))
+                out.append((f"{pre}/env", {"ts": ts, "source": source, "tempC": round(self.env_temp, 2), "humidity": round(self.env_hum, 1), "motion": self.motion, "doorOpen": self.door_open or self.staff_inside, "outdoorC": round(self.outdoor_temp, 1)}))
             if self.call_pressed and self.due("call", 10.0, now):
                 out.append((f"{pre}/call", {"ts": ts, "source": source, "pressed": True}))
         if self.due("devices", 1.0, now):
@@ -386,6 +390,7 @@ class SimEngine:
         self._pending: list[ScenarioStep] = []
         self.on_scenario_event: Optional[Callable[[str, dict[str, Any]], Any]] = None
         self.night_override: Optional[bool] = None
+        self.outdoor_temp = 18.0
         # résolutions (interventions d'un soignant) : jouées en surcouche du scénario principal, une par chambre à la fois
         self.resolutions: dict[str, dict[str, Any]] = {}
         self._resolution_queue: dict[str, list[tuple[str, Optional[str]]]] = {}
@@ -533,8 +538,12 @@ class SimEngine:
             if r.call_pressed:
                 self.publish(f"hackcure/room/{r.room}/call", {"ts": iso_now(), "source": self.source, "pressed": True})
         elif action == "env":
-            if "tempC" in params:
-                r.trend("env_temp", float(params["tempC"]), float(params.get("duration", 30)))
+            if "tempC" in params:  # source de chaleur : la chambre tend vers cette température (les équipements gardent leur effet)
+                r.env_offset = float(params["tempC"]) - 22.5
+            if "outdoorC" in params:
+                self.outdoor_temp = float(params["outdoorC"])
+                for rr in self.rooms.values():
+                    rr.outdoor_temp = self.outdoor_temp
             if "doorOpen" in params:
                 r.door_open = bool(params["doorOpen"])
         elif action == "thermal":

@@ -322,3 +322,70 @@ class AuditLog(SQLModel, table=True):
     entity_id: Optional[str] = None
     details: str = ""
     ts: datetime = Field(default_factory=utcnow, index=True)
+
+
+# ─── V2 : dossier médical, biologie, parcours fièvre ─────────────────────────
+class MedicalRecordEntry(SQLModel, table=True):
+    """Un document du dossier médical (consultation, hospitalisation, biologie, imagerie, intervention…)."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    patient_pk: int = Field(foreign_key="patient.id", index=True)
+    admission_id: Optional[int] = Field(default=None, foreign_key="admission.id")
+    type: str = Field(index=True)  # consultation|hospitalisation|operation|biologie|imagerie|vaccination|allergie|chronique|familial|traitement|ordonnance|psychologie|intervention
+    date: datetime = Field(index=True)
+    title: str = ""
+    author: str = ""
+    service: str = ""
+    facility: str = ""
+    summary: str = ""
+    content: str = ""
+    data_json: str = "{}"  # contenu structuré
+    attachments_json: str = "[]"
+    source: str = "historique"  # historique (généré) | plateforme (créé pendant le séjour)
+    status: str = "signed"  # draft | signed
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class LabResult(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    patient_pk: int = Field(foreign_key="patient.id", index=True)
+    entry_id: Optional[int] = Field(default=None, foreign_key="medicalrecordentry.id", index=True)
+    code: str = Field(index=True)  # CRP, LEUCO…
+    label: str = ""
+    value: Optional[float] = None
+    text: str = ""  # résultat qualitatif
+    unit: str = ""
+    ref_low: Optional[float] = None
+    ref_high: Optional[float] = None
+    abnormal: bool = False
+    date: datetime = Field(index=True)
+
+
+class FeverPathway(SQLModel, table=True):
+    """Parcours fièvre : bilan clinique → bilan biologique → confort → traitement / résolution."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    risk_id: int = Field(foreign_key="risk.id", index=True)
+    admission_id: Optional[int] = Field(default=None, foreign_key="admission.id")
+    patient_pk: Optional[int] = Field(default=None, foreign_key="patient.id")
+    room_code: str = Field(index=True)
+    stage: str = "clinical_exam"  # clinical_exam | lab_proposed | lab_ordered | lab_results | resolved
+    criterion: str = ""
+    core_temp: Optional[float] = None
+    qsofa: int = 0
+    news2: Optional[int] = None
+    checklist_json: str = "[]"
+    labs_json: str = "[]"
+    results_json: str = "[]"
+    ai_json: str = "{}"
+    exam_done_by: Optional[str] = None
+    exam_done_at: Optional[datetime] = None
+    labs_validated_by: Optional[str] = None
+    labs_validated_at: Optional[datetime] = None
+    results_due_at: Optional[datetime] = None
+    results_at: Optional[datetime] = None
+    comfort_note: str = ""
+    record_entry_id: Optional[int] = None
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+    closed_at: Optional[datetime] = None

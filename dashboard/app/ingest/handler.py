@@ -242,6 +242,8 @@ def _on_thermal(room: str, p: dict[str, Any], source: str) -> None:
 def _on_env(room: str, p: dict[str, Any]) -> None:
     rs = room_state(room)
     rs["env"] = {"tempC": float(p["tempC"]), "humidity": float(p["humidity"]), "motion": bool(p.get("motion", False)), "doorOpen": bool(p.get("doorOpen", False))}
+    if p.get("outdoorC") is not None:  # température extérieure (simulateur ou station) : sert au choix fenêtre / climatisation
+        rs["env"]["outdoorC"] = float(p["outdoorC"])
     rs["ts"] = p["ts"]
     _dirty_rooms.add(room)
     _store_env_sampled(room, "tempC", float(p["tempC"]), period=15.0)

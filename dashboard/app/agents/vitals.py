@@ -142,12 +142,11 @@ class VitalsAgent(Agent):
                 await self.clear(room, "hypertension", f"PAS {sy:.0f} mmHg normalisée")
         elif t == "thermometer" and m.get("tempC") is not None:
             tc = float(m["tempC"])
-            if tc >= lim["temp_high"]:
-                await self.raise_candidate(room, "fever", {"tempC": tc, "skinTempC": handler.room_state(room).get("skinTempC")}, f"Température {tc:.1f} °C ≥ {lim['temp_high']} °C (caméra thermique : {handler.room_state(room).get('skinTempC')} °C).")
-            elif tc <= lim["temp_low"]:
+            # la fièvre est qualifiée par le FeverAgent (fièvre vraie ≠ simple hausse thermique)
+            if tc <= lim["temp_low"]:
                 await self.raise_candidate(room, "hypothermia", {"tempC": tc}, f"Température {tc:.1f} °C ≤ {lim['temp_low']} °C.")
             else:
-                await self.clear(room, "fever", f"température {tc:.1f} °C normalisée")
+                await self.clear(room, "hypothermia", f"température {tc:.1f} °C normalisée")
         elif t == "iv_pump":
             vol, occ = m.get("volumeLeftMl"), bool(m.get("occlusion"))
             if occ:

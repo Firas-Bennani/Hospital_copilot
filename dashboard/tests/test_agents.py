@@ -151,7 +151,8 @@ def test_vitals_thresholds_and_auto_clear(client):
 
 
 def test_environment_agent_sends_commands(client):
-    client.post("/api/ingest", json=msg("hackcure/room/104/env", tempC=29.5, humidity=50, motion=False, doorOpen=False))
+    # 29 °C dehors : aérer ne suffirait pas ⇒ climatisation (V2 : fenêtre seulement si l'air extérieur est nettement plus frais)
+    client.post("/api/ingest", json=msg("hackcure/room/104/env", tempC=29.5, humidity=50, motion=False, doorOpen=False, outdoorC=29.0))
     rs = wait_for(lambda: (lambda d: d if d["equipment"]["ac"] == "on" else None)(client.get("/api/rooms/states").json()["104"]))
     assert rs, "la clim doit être allumée au-dessus de 27 °C"
     logs = client.get("/api/agents/logs?agent=EnvironmentAgent&room=104").json()

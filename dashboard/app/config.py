@@ -101,6 +101,11 @@ class Settings:
         # V2 : en simulation, « Je prends en charge » fait intervenir un soignant virtuel (scénario *_resolves)
         self.auto_resolution = _bool("AUTO_RESOLUTION", True)
         self.vitals_tick_s = _float("VITALS_TICK_S", 20.0)  # période du calcul NEWS2 / tendances
+        # Parcours fièvre (V2) : délais « simulés », raccourcis en démo
+        self.fever_repeat_gap_s = _float("FEVER_REPEAT_GAP_S", 600.0)  # écart mini entre deux relevés ≥ 37,8 °C
+        self.fever_lab_delay_s = _float("FEVER_LAB_DELAY_S", 45.0)  # arrivée des résultats biologiques simulés
+        self.thermal_recheck_s = _float("THERMAL_RECHECK_S", 180.0)  # revérification après une simple hausse thermique
+        self.outdoor_temp_c = _float("OUTDOOR_TEMP_C", 18.0)  # température extérieure si le simulateur ne la fournit pas
         self.escalation_critical_s = _float("ESCALATION_CRITICAL_S", 120.0)
         self.escalation_high_s = _float("ESCALATION_HIGH_S", 600.0)
         self.escalation_medium_s = _float("ESCALATION_MEDIUM_S", 1800.0)

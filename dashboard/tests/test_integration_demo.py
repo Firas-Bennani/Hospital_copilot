@@ -60,7 +60,7 @@ def test_fall_demo_then_nurse_resolves(client):
     risks = wait_for(lambda: [r for r in client.get("/api/risks?room=104&open_only=1").json() if r["type"] == "fall"])
     assert risks, "la chute doit créer un risque"
     fall = risks[0]
-    assert fall["severity"] == "critical" and fall["status"] == "open"
+    assert fall["severity"] == "critical" and fall["status"] in ("open", "escalated")  # escaladé si personne ne vient (délai de test : 2 s)
     rs = client.get("/api/rooms/states").json()["104"]
     assert rs["posture"] == "on_floor" and rs["riskLevel"] == "critical"
     assert client.get("/api/patients").json()["patient_04"]["state"] in ("fall_detected", "fall_and_pain")
@@ -85,7 +85,8 @@ def test_fall_demo_then_nurse_resolves(client):
     # 3) re-vérification (FOLLOWUP_RECHECK_S = 0.3 s en test) → résolu + vérifié
     r = wait_for(lambda: (lambda d: d if d["status"] == "resolved" else None)(client.get(f"/api/risks/{fall['id']}").json()), timeout=10)
     assert r and r["verified_at"] and "FollowUpAgent" in r["resolved_by"]
-    assert client.get("/api/rooms/states").json()["104"]["riskLevel"] in ("none", "low")
+    # V2 : d'autres risques cliniques détectés pendant la chute (NEWS2, tachycardie) restent ouverts jusqu'à leur propre vérification
+    assert not [x for x in client.get("/api/risks?room=104&open_only=1").json() if x["type"] == "fall"]
     assert client.get("/api/patients").json()["patient_04"]["state"] == "normal"
     logs = client.get("/api/agents/logs?room=104&limit=100").json()
     assert {l["agent"] for l in logs} >= {"VisionAgent", "RiskAgent", "FollowUpAgent"}

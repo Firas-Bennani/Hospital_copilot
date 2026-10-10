@@ -45,9 +45,9 @@ def severity_for(rtype: str, details: dict[str, Any], patient: dict[str, Any] | 
         return {"attention": "medium", "high": "high", "critical": "critical"}.get(str(details.get("level")), "high")
     if rtype in ("call", "pain", "iv_occlusion", "sepsis_trend", "hypotension", "hypertension", "hypothermia"):
         return "high"
-    if rtype == "fever":
-        t = float(details.get("tempC", 38.0))
-        return "high" if t >= 39.0 else "medium"
+    if rtype == "fever":  # fièvre vraie (température centrale) : élevée si ≥ 39 °C ou qSOFA ≥ 2
+        t = float(details.get("tempC") or 38.0)
+        return "high" if (t >= 39.0 or int(details.get("qsofa") or 0) >= 2) else "medium"
     if rtype in ("tachycardia", "bradycardia"):
         hr = float(details.get("hr", 100))
         return "high" if (hr > 130 or hr < 40) else "medium"

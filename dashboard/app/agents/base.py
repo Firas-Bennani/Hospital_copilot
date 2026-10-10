@@ -47,16 +47,21 @@ class Agent:
             self._queue = q
             try:
                 await self.on_start()
+                next_tick = time.monotonic() + (self.tick_interval or 0)
                 while True:
+                    # le tick est périodique même quand les messages arrivent en continu (capteurs à 1–2 Hz)
                     try:
                         if self.tick_interval:
-                            ev = await asyncio.wait_for(q.get(), timeout=self.tick_interval)
+                            ev = await asyncio.wait_for(q.get(), timeout=max(0.0, next_tick - time.monotonic()))
                         else:
                             ev = await q.get()
                     except asyncio.TimeoutError:
+                        ev = None
+                    if ev is not None:
+                        await self._safe(self.handle, ev)
+                    if self.tick_interval and time.monotonic() >= next_tick:
+                        next_tick = time.monotonic() + self.tick_interval
                         await self._safe(self.on_tick)
-                        continue
-                    await self._safe(self.handle, ev)
             except asyncio.CancelledError:
                 bus.unsubscribe(q)
                 raise
