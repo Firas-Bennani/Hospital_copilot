@@ -114,6 +114,7 @@ class Settings:
         # Psychologie (V2) : période du score continu, seuil de bien-être sous lequel l'équipe est notifiée
         self.psych_tick_s = _float("PSYCH_TICK_S", 20.0)
         self.psych_threshold = int(_float("PSYCH_THRESHOLD", 50))
+        self.prediction_tick_s = _float("PREDICTION_TICK_S", 10.0)
         self.escalation_critical_s = _float("ESCALATION_CRITICAL_S", 120.0)
         self.escalation_high_s = _float("ESCALATION_HIGH_S", 600.0)
         self.escalation_medium_s = _float("ESCALATION_MEDIUM_S", 1800.0)

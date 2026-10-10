@@ -27,7 +27,7 @@ import yaml
 logger = logging.getLogger("hackcure.sim")
 
 SCENARIOS_DIR = Path(__file__).resolve().parent / "scenarios"
-DEVICE_TYPES = ["iv_pump", "nutrition_pump", "transfusion", "bp", "ecg", "oxygen", "spo2", "thermometer"]
+DEVICE_TYPES = ["iv_pump", "nutrition_pump", "transfusion", "bp", "ecg", "oxygen", "spo2", "thermometer", "glucometer"]
 Publish = Callable[[str, dict[str, Any]], Any]
 
 
@@ -45,6 +45,7 @@ class Profile:
     dia: float = 78
     temp: float = 36.8
     rr: float = 16
+    glucose: float = 0.95  # glycémie capillaire (g/L)
     variability: float = 1.0
     rhythm: str = "sinus"
     oxygen_flow: float = 0.0
@@ -54,7 +55,7 @@ class Profile:
 
 
 DEFAULT_PROFILES: dict[str, Profile] = {
-    "101": Profile(hr=78, spo2=96, sys=138, dia=82, temp=37.1, rr=18, oxygen_flow=1.0, iv_rate=83),  # pneumopathie, diabète
+    "101": Profile(glucose=1.45, hr=78, spo2=96, sys=138, dia=82, temp=37.1, rr=18, oxygen_flow=1.0, iv_rate=83),  # pneumopathie, diabète
     "102": Profile(hr=84, spo2=97, sys=112, dia=70, temp=36.7, rr=18, rhythm="afib", iv_rate=42, variability=1.4),  # insuff. cardiaque
     "103": Profile(hr=86, spo2=91, sys=130, dia=76, temp=36.9, rr=19, oxygen_flow=2.0, iv_rate=63, nutrition_rate=60),  # BPCO
     "104": Profile(hr=76, spo2=97, sys=118, dia=72, temp=37.0, rr=16, iv_rate=100, transfusion_rate=120),  # post-op hanche
@@ -84,6 +85,7 @@ class VirtualRoom:
     persons: int = 1
     staff_inside: bool = False
     staff_role: Optional[str] = None  # nurse | duty_doctor | psychiatrist… (avatar affiché dans la 3D)
+    seizure_motion: float = 0.0  # 0..1 : mouvements rythmiques anormaux vus par la caméra (variance des keypoints)
     staff_since: Optional[float] = None
     patient_track: int = 1
     last_zone_before_absent: str = "bed"
@@ -114,7 +116,7 @@ class VirtualRoom:
 
     def __post_init__(self) -> None:
         p = self.profile
-        self.vitals = {"hr": p.hr, "spo2": p.spo2, "sys": p.sys, "dia": p.dia, "temp": p.temp, "rr": p.rr}
+        self.vitals = {"hr": p.hr, "spo2": p.spo2, "sys": p.sys, "dia": p.dia, "temp": p.temp, "rr": p.rr, "glucose": p.glucose, "st": 0.0}
         self.skin_temp = p.temp - 0.4
         for t in DEVICE_TYPES:
             self.device_status[t] = "running"
@@ -128,7 +130,7 @@ class VirtualRoom:
     # ── physiologie ─────────────────────────────────────────────────────────
     def step(self, dt: float, now: float, night: bool) -> None:
         p = self.profile
-        base = {"hr": p.hr, "spo2": p.spo2, "sys": p.sys, "dia": p.dia, "temp": p.temp, "rr": p.rr}
+        base = {"hr": p.hr, "spo2": p.spo2, "sys": p.sys, "dia": p.dia, "temp": p.temp, "rr": p.rr, "glucose": p.glucose, "st": 0.0}
         # modulations par l'état
         if self.activity == "sleeping":
             base["hr"] -= 6
@@ -163,7 +165,7 @@ class VirtualRoom:
         for m, b in base.items():
             tau = 25.0 if m != "temp" else 180.0
             self.vitals[m] += (b - self.vitals[m]) * min(1.0, dt / tau)
-            noise = {"hr": 1.6, "spo2": 0.2, "sys": 2.2, "dia": 1.4, "temp": 0.03, "rr": 0.5}[m] * p.variability
+            noise = {"hr": 1.6, "spo2": 0.2, "sys": 2.2, "dia": 1.4, "temp": 0.03, "rr": 0.5, "glucose": 0.006, "st": 0.01}[m] * p.variability
             self.vitals[m] += random.gauss(0, noise) * math.sqrt(min(dt, 1.0))
         self.vitals["hr"] = max(28, min(200, self.vitals["hr"]))
         self.vitals["spo2"] = max(70, min(100, self.vitals["spo2"]))
@@ -171,6 +173,8 @@ class VirtualRoom:
         self.vitals["dia"] = max(35, min(140, min(self.vitals["dia"], self.vitals["sys"] - 20)))
         self.vitals["temp"] = max(34.0, min(42.0, self.vitals["temp"]))
         self.vitals["rr"] = max(6, min(45, self.vitals["rr"]))
+        self.vitals["glucose"] = max(0.3, min(6.0, self.vitals["glucose"]))
+        self.vitals["st"] = max(-1.0, min(6.0, self.vitals["st"]))
         # température cutanée (caméra thermique) suit la température centrale
         # la peau suit la température centrale, et se réchauffe aussi dans une chambre trop chaude (sans fièvre)
         skin_target = self.vitals["temp"] - 0.4 + max(0.0, self.env_temp - 25.0) * 0.3
@@ -292,6 +296,8 @@ class VirtualRoom:
                     "cvClass": {"lying_bed": "patient_lying", "sitting_bed": "patient_sitting", "sitting_chair": "patient_sitting",
                                 "standing": "patient_moving_out", "walking": "patient_moving_out", "on_floor": "patient_fallen", "absent": "patient_out"}[self.posture],
                     "floorPos": None if self.posture in ("lying_bed", "sitting_bed", "absent") else {"x": round(random.uniform(0.2, 0.8), 2), "y": round(random.uniform(0.3, 0.9), 2)},
+                    # variance des points clés du squelette (0 = immobile) et fréquence dominante du mouvement, calculées par l'edge
+                    "kpVariance": round(max(0.0, 0.02 + self.seizure_motion * 0.6 + random.gauss(0, 0.005)), 3), "rhythmicHz": round(4.0 + random.gauss(0, 0.2), 1) if self.seizure_motion > 0.3 else 0.0,
                 }))
             if self.due("expression", 3.0, now):
                 out.append((f"{pre}/vision/expression", {"ts": ts, "source": source, "expression": self.expression, "confidence": round(self.expression_conf, 2)}))
@@ -324,7 +330,8 @@ class VirtualRoom:
             (f"{pre}/{self.room}-nutrition_pump", {"type": "nutrition_pump", "status": self.device_status["nutrition_pump"], "metrics": {"rateMlH": p.nutrition_rate, "volumeLeftMl": round(self.nutrition_volume, 1)}}),
             (f"{pre}/{self.room}-transfusion", {"type": "transfusion", "status": tr_status, "metrics": {"rateMlH": p.transfusion_rate, "volumeLeftMl": round(self.transfusion_volume, 1), "reaction": self.reaction}}),
             (f"{pre}/{self.room}-bp", {"type": "bp", "status": "running", "metrics": {"sys": sys_, "dia": dia, "map": round(dia + (sys_ - dia) / 3)}}),
-            (f"{pre}/{self.room}-ecg", {"type": "ecg", "status": "running", "metrics": {"hr": hr, "rhythm": rhythm, "rr": round(v["rr"])}}),
+            (f"{pre}/{self.room}-ecg", {"type": "ecg", "status": "running", "metrics": {"hr": hr, "rhythm": rhythm, "rr": round(v["rr"]), "stMm": round(v["st"], 1)}}),
+            (f"{pre}/{self.room}-glucometer", {"type": "glucometer", "status": "running", "metrics": {"glucose": round(v["glucose"], 2)}}),
             (f"{pre}/{self.room}-oxygen", {"type": "oxygen", "status": self.device_status["oxygen"], "metrics": {"flowLMin": p.oxygen_flow}}),
             (f"{pre}/{self.room}-spo2", {"type": "spo2", "status": "running", "metrics": {"spo2": round(v["spo2"])}}),
             (f"{pre}/{self.room}-thermometer", {"type": "thermometer", "status": "running", "metrics": {"tempC": round(v["temp"], 1)}}),
@@ -527,6 +534,7 @@ class SimEngine:
             r.trend(params["metric"], float(params["target"]), float(params.get("duration", 60)), float(params.get("hold", 0)))
         elif action == "clear_trends":
             r.trends.clear()
+            r.seizure_motion = 0.0
         elif action == "iv_volume":
             r.iv_volume = float(params["volume"])
         elif action == "occlusion":
@@ -550,6 +558,8 @@ class SimEngine:
             r.trend("temp", float(params["skinTempC"]) + 0.4, float(params.get("duration", 60)))
         elif action == "equipment":
             r.equipment[params["equipment"]] = params["state"]
+        elif action == "seizure":  # mouvements rythmiques anormaux (level 0..1) ; 0 = arrêt
+            r.seizure_motion = float(params.get("level", 1.0))
         elif action == "night":
             self.night_override = bool(params.get("value", True))
         elif action == "sleep_all":

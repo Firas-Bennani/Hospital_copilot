@@ -79,6 +79,14 @@ def verify_risk(rtype: str, rs: dict[str, Any]) -> tuple[bool, str]:
     if rtype == "transfusion_reaction":
         dev = (rs.get("devices") or {}).get(f"{rs.get('room')}-transfusion") or {}
         return not (dev.get("metrics") or {}).get("reaction"), "réaction " + ("présente" if (dev.get("metrics") or {}).get("reaction") else "absente")
+    if rtype.startswith("predicted_"):
+        from ..clinical.prediction import RISK_TYPES
+        from . import manager as _agents
+
+        key = next((k for k, t in RISK_TYPES.items() if t == rtype), None)
+        agent = _agents.get("PredictionAgent")
+        risk = agent.risk_of(str(rs.get("room")), key) if agent and key else None
+        return (risk is None or risk < 60), f"risque prédit {risk if risk is not None else 'non calculé'}/100"
     if rtype == "medication_late":
         from .. import care
         from ..db import session_scope as _scope

@@ -51,6 +51,8 @@ CONDITIONS: dict[str, dict[str, Any]] = {
                  "follow": "MMSE à {mmse}/30. Autonomie conservée pour les actes de la vie quotidienne. Stimulation cognitive conseillée, réévaluation à 6 mois."},
     "ostéoporose": {"label": "Ostéoporose", "service": "Rhumatologie", "treat": [("Acide alendronique", "70 mg/semaine"), ("Calcium + vitamine D", "1/j")], "labs": ["CREAT"], "years": (5, 10),
                     "follow": "T-score fémoral à {tscore}. Pas de nouvelle fracture. Prévention des chutes rappelée, supplémentation vitamino-calcique poursuivie."},
+    "épilepsie": {"label": "Épilepsie vasculaire", "service": "Gériatrie", "treat": [("Lévétiracétam", "500 mg x2/j")], "labs": ["CREAT"], "years": (2, 5),
+                  "follow": "Pas de crise depuis la dernière consultation. Observance du traitement vérifiée ; conduite à tenir en cas de crise réexpliquée à l'entourage."},
     "anémie": {"label": "Anémie", "service": "Médecine générale", "treat": [("Fer", "80 mg/j")], "labs": ["HB"], "years": (0, 1),
                "follow": "Hémoglobine à {hb} g/dL. Supplémentation martiale, contrôle dans un mois."},
 }

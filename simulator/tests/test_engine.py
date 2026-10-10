@@ -47,7 +47,7 @@ def test_all_device_types_for_all_rooms(validator):
     eng = SimEngine(publish=lambda *_: None)
     msgs = collect(eng, 1.5)
     devices = {t.split("/")[-1] for t, _ in msgs if "/device/" in t}
-    assert len(devices) == 32
+    assert len(devices) == 36  # 9 types × 4 chambres (V2 : glucomètre)
     assert "101-iv_pump" in devices and "104-thermometer" in devices
 
 

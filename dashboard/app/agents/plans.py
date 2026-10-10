@@ -31,6 +31,11 @@ TYPE_LABELS: dict[str, str] = {
     "medication_late": "Prise de médicament en retard",
     "psych_alert": "Alerte psychiatrique (idées suicidaires déclarées)",
     "psych_low_wellbeing": "Bien-être psychologique bas",
+    "predicted_seizure": "Prédiction — crise d'épilepsie",
+    "predicted_sepsis": "Prédiction — sepsis / choc septique",
+    "predicted_cardiac": "Prédiction — événement cardiaque",
+    "predicted_deterioration": "Prédiction — détérioration générale",
+    "predicted_glycemia": "Prédiction — complication du diabète",
 }
 
 # Sévérité déterministe : fonction(détails) -> low|medium|high|critical
@@ -39,6 +44,8 @@ def severity_for(rtype: str, details: dict[str, Any], patient: dict[str, Any] | 
     high_fall_risk = patient.get("fall_risk") == "high"
     if rtype in ("fall", "transfusion_reaction", "psych_alert"):
         return "critical"
+    if rtype.startswith("predicted_"):  # niveau fixé par clinical/prediction.py : critique à partir de 80/100
+        return "critical" if int(details.get("risk") or 0) >= 80 else "high"
     if rtype == "behavioral_risk":
         return {"critical": "critical", "high": "high"}.get(str(details.get("risk_level")), "medium")
     if rtype == "news2_high":

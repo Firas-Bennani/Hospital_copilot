@@ -191,6 +191,7 @@ async def _on_vision_state(room: str, p: dict[str, Any], source: str) -> None:
         cvClass=p.get("cvClass"), floorPos=p.get("floorPos"), source=source, visionSource=source, lastVisionTs=p["ts"], ts=p["ts"],
     )
     rs["staffPresent"] = int(p["persons"]) > 1
+    rs["kpVariance"], rs["rhythmicHz"] = p.get("kpVariance"), p.get("rhythmicHz")  # mouvements rythmiques (PredictionAgent)
     rs["patient_id"] = state.patient_for_room(room)
     _dirty_rooms.add(room)
 
@@ -268,12 +269,16 @@ def _on_device(room: str, device_id: str, p: dict[str, Any]) -> None:
         v["rhythm"] = metrics.get("rhythm")
         if "rr" in metrics:
             v["rr"] = metrics["rr"]
+        if "stMm" in metrics:
+            v["st"] = metrics["stMm"]  # sus-décalage du segment ST (mm)
     elif t == "spo2":
         v["spo2"] = metrics.get("spo2")
     elif t == "bp":
         v["sys"], v["dia"], v["map"] = metrics.get("sys"), metrics.get("dia"), metrics.get("map")
     elif t == "thermometer":
         v["tempC"] = metrics.get("tempC")
+    elif t == "glucometer":
+        v["glucose"] = metrics.get("glucose")  # glycémie capillaire (g/L)
     elif t == "oxygen":
         v["o2FlowLMin"] = metrics.get("flowLMin")
     elif t == "iv_pump":

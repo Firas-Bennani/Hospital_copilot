@@ -63,6 +63,7 @@ PERMISSIONS: dict[str, set[str]] = {
     "view_psychology": {"nurse"} | DOCTORS | PSY,
     "view_psych_answers": DOCTORS | PSY,
     "write_psychology": PSY | {"owner"},
+    "view_predictions": {"nurse"} | DOCTORS | PSY,
     "run_demo": ALL,
 }
 

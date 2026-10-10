@@ -194,3 +194,26 @@ spec(
             "Ce n'est JAMAIS un diagnostic : ne nomme pas une maladie comme établie, parle de « risque » et de « signes ». Si des idées suicidaires sont mentionnées, la sécurité du patient passe en premier."),
     format='{"explanation": "3 phrases au plus", "conduct": ["conduite à tenir"]}', required=["explanation"], mock=_mock_psych,
 )
+
+
+# ─── PredictionAgent ──────────────────────────────────────────────────────────
+def _mock_prediction(ctx: dict[str, Any]) -> dict[str, Any]:
+    conduct = {
+        "Crise d'épilepsie": ["Sécuriser l'environnement du lit (barrières, objets éloignés) et rester auprès du patient.", "Vérifier la prise de l'antiépileptique prescrit et prévenir le médecin de garde.", "Noter l'heure de début de tout mouvement anormal ; position latérale de sécurité si crise."],
+        "Sepsis / choc septique": ["Recontrôler les constantes toutes les 15 min et recalculer qSOFA et NEWS2.", "Prévenir le médecin de garde ; préparer le bilan (hémocultures, lactates).", "Vérifier la voie veineuse et les allergies avant tout traitement."],
+        "Infarctus / événement cardiaque": ["ECG 12 dérivations immédiat et appel du médecin de garde.", "Patient au repos strict, scope, oxygène selon la SpO2.", "Préparer le dosage de troponine ; vérifier allergies et anticoagulants en cours."],
+        "Détérioration générale": ["Rapprocher la surveillance (constantes toutes les 15 à 30 min).", "Rechercher la cause : infection, douleur, saignement, détresse respiratoire.", "Prévenir le médecin de garde si le NEWS2 continue de monter."],
+        "Complication du diabète": ["Contrôler la glycémie capillaire immédiatement, puis à 15 min.", "Appliquer le protocole de resucrage ou d'hyperglycémie prescrit ; prévenir le médecin.", "Vérifier l'heure du dernier repas et de la dernière dose d'insuline ou d'antidiabétique."],
+    }.get(ctx.get("condition"), ["Rapprocher la surveillance et prévenir le médecin de garde."])
+    return {"explanation": f"Risque de {str(ctx.get('condition', 'crise')).lower()} estimé à {ctx.get('risque')}/100 ({ctx.get('niveau')}), fenêtre {ctx.get('fenetre_estimee')}, confiance {ctx.get('confiance')}. "
+                           f"Facteurs retenus : {'; '.join((ctx.get('facteurs') or [])[:4])}. Estimation de prototype, non validée cliniquement.",
+            "conduct": conduct}
+
+
+spec(
+    "crisis-prediction", agent="PredictionAgent", title="Explication d'une prédiction de crise",
+    system=("Un score déterministe estime qu'un patient hospitalisé risque une crise (condition, risque sur 100, fenêtre de temps approximative, facteurs fournis). "
+            "Explique en 3 phrases au plus pourquoi le risque est à ce niveau en citant les facteurs et les valeurs, puis propose 3 à 4 conduites à tenir concrètes pour l'infirmier et le médecin de garde. "
+            "Rappelle que c'est une estimation de prototype, non validée cliniquement. Ne modifie ni le risque ni la fenêtre ; n'annonce pas la crise comme certaine."),
+    format='{"explanation": "3 phrases au plus", "conduct": ["conduite à tenir"]}', required=["explanation"], mock=_mock_prediction,
+)

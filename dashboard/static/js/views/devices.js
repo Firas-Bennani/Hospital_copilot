@@ -4,8 +4,8 @@
  */
 (function () {
     'use strict';
-    const LABELS = { iv_pump: 'Perfusion', nutrition_pump: 'Nutrition', transfusion: 'Transfusion', bp: 'Tension', ecg: 'ECG', oxygen: 'Oxygène', spo2: 'SpO2', thermometer: 'Thermomètre' };
-    const KEY = { iv_pump: ['volumeLeftMl', 'ml'], nutrition_pump: ['volumeLeftMl', 'ml'], transfusion: ['volumeLeftMl', 'ml'], bp: ['sys', 'mmHg'], ecg: ['hr', 'bpm'], oxygen: ['flowLMin', 'l/min'], spo2: ['spo2', '%'], thermometer: ['tempC', '°C'] };
+    const LABELS = { iv_pump: 'Perfusion', nutrition_pump: 'Nutrition', transfusion: 'Transfusion', bp: 'Tension', ecg: 'ECG', oxygen: 'Oxygène', spo2: 'SpO2', thermometer: 'Thermomètre', glucometer: 'Glucomètre' };
+    const KEY = { iv_pump: ['volumeLeftMl', 'ml'], nutrition_pump: ['volumeLeftMl', 'ml'], transfusion: ['volumeLeftMl', 'ml'], bp: ['sys', 'mmHg'], ecg: ['hr', 'bpm'], oxygen: ['flowLMin', 'l/min'], spo2: ['spo2', '%'], thermometer: ['tempC', '°C'], glucometer: ['glucose', 'g/L'] };
     const SERIES = [
         { device: 'ecg', metric: 'hr', label: 'FC (bpm)', color: '#22ff7a', axis: 'y' },
         { device: 'spo2', metric: 'spo2', label: 'SpO2 (%)', color: '#38bdf8', axis: 'y' },
@@ -33,6 +33,7 @@
             case 'ecg': return `<b>${m.hr}</b> bpm · ${m.rhythm}${m.rr ? ' · FR ' + m.rr : ''}`;
             case 'oxygen': return `<b>${m.flowLMin}</b> l/min`;
             case 'spo2': return `<b>${m.spo2}</b> %`;
+            case 'glucometer': return `<b>${m.glucose}</b> g/L`;
             case 'thermometer': return `<b>${Number(m.tempC).toFixed(1)}</b> °C`;
             default: return JSON.stringify(m);
         }

@@ -33,8 +33,9 @@ from .models import (
 
 logger = logging.getLogger("hackcure.seed")
 
-DEVICE_TYPES = ["iv_pump", "nutrition_pump", "transfusion", "bp", "ecg", "oxygen", "spo2", "thermometer"]
+DEVICE_TYPES = ["iv_pump", "nutrition_pump", "transfusion", "bp", "ecg", "oxygen", "spo2", "thermometer", "glucometer"]
 DEVICE_LABELS = {
+    "glucometer": "Glucomètre (glycémie capillaire)",
     "iv_pump": "Pompe à perfusion",
     "nutrition_pump": "Pompe de nutrition",
     "transfusion": "Transfusion",
@@ -68,7 +69,7 @@ PATIENTS = [
     ("patient_02", "Patient B", 68, "Fatma", "Gharbi", "F", "pénicilline", "O-", "medium",
      "Insuffisance cardiaque (FEVG 40 %), fibrillation atriale sous anticoagulant", "Décompensation cardiaque"),
     ("patient_03", "Patient C", 81, "Ali", "Mezghani", "M", "iode", "B+", "high",
-     "BPCO stade III sous oxygène, dénutrition, troubles cognitifs légers", "Exacerbation de BPCO"),
+     "BPCO stade III sous oxygène, dénutrition, troubles cognitifs légers, épilepsie vasculaire sous lévétiracétam", "Exacerbation de BPCO"),
     ("patient_04", "Patient D", 75, "Zohra", "Chaabane", "F", "AINS, aspirine", "AB+", "medium",
      "Ostéoporose, fracture du col fémoral opérée (J+4), anémie post-opératoire", "Suites de prothèse de hanche"),
 ]
@@ -100,6 +101,9 @@ MEDICATIONS = [
     ("Chlorure de sodium", "NaCl 0,9 %", "poche", "500 ml", 150, 40, 900, ""),
     ("Glucose", "G5 %", "poche", "500 ml", 80, 30, 850, ""),
     ("Métoclopramide", "Primpéran", "comprimé", "10 mg", 4, 10, 120, ""),
+    ("Lévétiracétam", "Keppra", "comprimé", "500 mg", 60, 20, 600, ""),
+    ("Insuline rapide", "NovoRapid", "solution injectable", "100 UI/ml", 14, 6, 120, ""),
+    ("Glucose 30 %", "G30 %", "ampoule", "10 ml", 30, 10, 500, ""),
 ]
 
 STAFF = [
@@ -121,6 +125,7 @@ def seed_all() -> None:
             logger.info("Seed inséré : chambres, patients, admissions, pharmacie, personnel, utilisateurs")
         _ensure_users(session)
         session.flush()
+        _ensure_devices(session)
         from .medical_history import ensure_history
 
         n = ensure_history(session)  # V2 : 5 à 15 ans d'historique fictif par patient (déterministe)
@@ -206,6 +211,15 @@ def _seed_core(session: Session) -> None:
 
     for name, role, on_duty, room in STAFF:
         session.add(Staff(name=name, role=role, on_duty=on_duty, current_room=room))
+
+
+def _ensure_devices(session: Session) -> None:
+    """Ajoute les appareils apparus après la création de la base (V2 : glucomètre)."""
+    existing = {d.device_id for d in session.exec(select(MedicalDevice)).all()}
+    for room in session.exec(select(Room)).all():
+        for t in DEVICE_TYPES:
+            if f"{room.code}-{t}" not in existing:
+                session.add(MedicalDevice(device_id=f"{room.code}-{t}", room_code=room.code, type=t, status="standby", label=DEVICE_LABELS[t]))
 
 
 def _ensure_users(session: Session) -> None:

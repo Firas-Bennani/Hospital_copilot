@@ -89,7 +89,7 @@ def test_staff_and_cmd_ack(client):
 
 def test_devices_endpoints(client, login):
     devices = client.get("/api/devices").json()
-    assert len(devices) == 32
+    assert len(devices) == 36  # 9 types × 4 chambres (V2 : glucomètre)
     for _ in range(3):
         client.post("/api/ingest", json=msg("hackcure/room/101/device/101-ecg", type="ecg", metrics={"hr": 77, "rhythm": "sinus"}))
     d = [x for x in client.get("/api/devices?room=101").json() if x["type"] == "ecg"][0]

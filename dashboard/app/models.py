@@ -525,3 +525,19 @@ class PsychPrescription(SQLModel, table=True):
     author_name: str = ""
     active: bool = True
     created_at: datetime = Field(default_factory=utcnow)
+
+
+# ─── V2 étape 8 : prédiction des crises ───────────────────────────────────────
+class Prediction(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    patient_pk: int = Field(foreign_key="patient.id", index=True)
+    admission_id: Optional[int] = Field(default=None, foreign_key="admission.id")
+    room_code: str = Field(default="", index=True)
+    key: str = Field(index=True)  # seizure | sepsis | cardiac | deterioration | diabetes
+    risk: int = 0  # 0–100
+    level: str = "faible"  # faible | modéré | élevé | critique
+    window_json: str = ""  # {min_minutes, max_minutes, text}
+    confidence: str = "faible"
+    factors_json: str = "[]"
+    ai_json: str = ""
+    ts: datetime = Field(default_factory=utcnow, index=True)

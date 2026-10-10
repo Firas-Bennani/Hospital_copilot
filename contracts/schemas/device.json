@@ -7,7 +7,7 @@
   "properties": {
     "ts": { "type": "string" },
     "source": { "type": "string" },
-    "type": { "enum": ["iv_pump", "nutrition_pump", "transfusion", "bp", "ecg", "oxygen", "spo2", "thermometer"] },
+    "type": { "enum": ["iv_pump", "nutrition_pump", "transfusion", "bp", "ecg", "oxygen", "spo2", "thermometer", "glucometer"] },
     "status": { "enum": ["running", "paused", "alarm", "off", "standby"] },
     "metrics": { "type": "object" }
   },

@@ -297,3 +297,12 @@ body:has(#hf-panel.hf-walking) #kpi-bar { display: none; }   /* visite à pied :
 .psy-score { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .psy-disorder { padding: 6px 8px; background: rgba(15,23,42,.5); border-radius: 6px; }
 .psy-bar { height: 6px; border-radius: 3px; background: rgba(148,163,184,.2); margin: 5px 0; overflow: hidden; } .psy-bar span { display: block; height: 100%; }
+
+/* ─── Prédictions ─── */
+.pred-warning { border-left-color: #f59e0b; color: #fde68a; }
+.pred-patient { cursor: pointer; } .pred-patient.selected { border-color: var(--border-active); }
+.pred-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.pred-cell { padding: 6px 8px; background: rgba(15,23,42,.5); border-radius: 6px; }
+.pred-gauge { height: 8px; border-radius: 4px; background: rgba(148,163,184,.2); margin: 5px 0; overflow: hidden; } .pred-gauge span { display: block; height: 100%; transition: width .4s; }
+.pred-detail { padding: 6px 0; border-bottom: 1px solid rgba(148,163,184,.1); font-size: 13px; }
+@media (max-width: 1500px) { .pred-grid { grid-template-columns: repeat(3, 1fr); } }
