@@ -156,7 +156,7 @@ def test_environment_agent_sends_commands(client):
     rs = wait_for(lambda: (lambda d: d if d["equipment"]["ac"] == "on" else None)(client.get("/api/rooms/states").json()["104"]))
     assert rs, "la clim doit être allumée au-dessus de 27 °C"
     logs = client.get("/api/agents/logs?agent=EnvironmentAgent&room=104").json()
-    assert logs and "clim" in logs[0]["reasoning"].lower()
+    assert any("clim" in l["reasoning"].lower() for l in logs)  # le journal contient aussi la note de confort rédigée par le LLM
     eq = client.get("/api/commands/equipment").json()["104"]
     assert eq["ac"]["state"] == "on" and eq["ac"]["last_command_by"] == "EnvironmentAgent"
 

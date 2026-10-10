@@ -88,6 +88,23 @@ class VitalsAgent(Agent):
         async with self.working("acting"):
             await self.log(room, input=", ".join(f"{k}={v}" for k, v in details.items()), reasoning=reasoning, output=f"risque candidat « {rtype} »")
             await bus.publish("internal/risk_candidate", {"room": room, "type": rtype, "details": details, "source_agent": self.name})
+        await self.insight(room, rtype, details)
+
+    async def insight(self, room: str, rtype: str, details: dict[str, Any]) -> None:
+        """Lecture de la tendance des constantes par le LLM (workflow n8n `vitals-trend`), au plus une par chambre toutes les 5 min."""
+        now = time.time()
+        if now - self.reported.get((room, "_insight"), 0) < 300:
+            return
+        self.reported[(room, "_insight")] = now
+        from .. import orchestration
+        from .context import current_news2, room_vitals
+        from .plans import TYPE_LABELS
+
+        n2 = current_news2(room)
+        trend = {name: self.delta(f"{room}-{dev}", metric, 600) for name, dev, metric in (("FC", "ecg", "hr"), ("PAS", "bp", "sys"), ("SpO2", "spo2", "spo2"), ("temperature", "thermometer", "tempC"), ("FR", "ecg", "rr"))}
+        await orchestration.ask("vitals-trend", f"{room}:{int(now)}", {"task": "vitals_trend", "chambre": room, "alerte": TYPE_LABELS.get(rtype, rtype), "details": details, "constantes": room_vitals(room),
+                                                                         "variation_sur_10_min": {k: round(v, 1) for k, v in trend.items() if v is not None}, "news2": n2.to_dict() if n2 else None,
+                                                                         "seuils_du_patient": {k: v for k, v in self.limits(room).items() if k != "copd"}, "bpco": bool(self.limits(room).get("copd"))}, room=room)
 
     async def clear(self, room: str, rtype: str, reason: str) -> None:
         key = (room, rtype)
@@ -193,3 +210,16 @@ class VitalsAgent(Agent):
         head = [v for _, v in pts[:5]]
         tail = [v for _, v in pts[-5:]]
         return sum(tail) / len(tail) - sum(head) / len(head)
+
+
+from .. import orchestration as _orchestration  # noqa: E402
+
+
+@_orchestration.handler("vitals-trend")
+async def _on_vitals_note(ref: str, result: dict[str, Any], meta: dict[str, Any]) -> Optional[str]:
+    """Lecture de tendance affichée avec les constantes de la chambre (`room_state.vitalsNote`)."""
+    room = ref.split(":")[0]
+    rs = handler.room_state(room)
+    rs["vitalsNote"] = {"text": str(result.get("reading") or "")[:500], "watch": [str(x)[:160] for x in (result.get("watch") or [])][:4], "provider": meta.get("provider") or "anthropic (n8n)", "ts": time.time()}
+    handler._dirty_rooms.add(room)
+    return None

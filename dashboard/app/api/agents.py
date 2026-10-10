@@ -25,6 +25,18 @@ def list_agents(session: Session = Depends(get_session), _: authlib.CurrentUser 
     return {"agents": agent_manager.infos(), "llm_provider": settings.llm_provider, "llm_model": settings.llm_model, "enabled": settings.agents_enabled, "n8n": {**n8n.info(), "workflows": workflows}}
 
 
+@router.get("/map")
+def agents_map(_: authlib.CurrentUser = Depends(authlib.get_current_user)):
+    """Carte des agents : quel agent, quel workflow n8n, quels déclencheurs."""
+    from .. import orchestration
+    from ..agents.specs import agent_map
+
+    rows = agent_map()
+    for r in rows:
+        r["calls"] = orchestration.stats.get(r["workflow"], {})
+    return {"n8n": n8n.info(), "rows": rows, "principle": "La détection temps réel et la sévérité restent dans le backend Python ; n8n orchestre le raisonnement LLM, les notifications, les escalades, les attentes et les comptes rendus. Repli local automatique si n8n est indisponible."}
+
+
 @router.get("/logs")
 def logs(agent: Optional[str] = None, room: Optional[str] = None, risk_id: Optional[int] = None, limit: int = Query(50, le=500), session: Session = Depends(get_session), _: authlib.CurrentUser = Depends(authlib.get_current_user)):
     q = select(AgentLog)

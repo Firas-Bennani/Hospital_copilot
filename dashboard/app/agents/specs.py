@@ -234,3 +234,73 @@ spec(
             "Reste dans le cadre de la préparation standard (tu peux l'ordonner et la préciser) ; signale toute allergie ou tout antécédent qui change l'accueil."),
     format='{"briefing": "3 phrases au plus", "preparation": {"materiel": ["..."], "equipe": ["..."], "examens": ["..."]}}', required=["briefing"], mock=_mock_ambulance,
 )
+
+
+# ─── VisionAgent, VitalsAgent, EnvironmentAgent (agents V1 : leur raisonnement passe aussi par n8n) ──────────
+def _mock_vision(ctx: dict[str, Any]) -> dict[str, Any]:
+    return {"observation": f"{ctx.get('evenement', 'Événement')} en chambre {ctx.get('chambre')} : posture {ctx.get('posture')}, activité {ctx.get('activite')}, expression {ctx.get('expression')}"
+                           + (", de nuit" if ctx.get("nuit") else "") + f", {ctx.get('personnes')} personne(s) dans la chambre.", "mood": {"pain": "pain", "sad": "sad", "fear": "anxious"}.get(str(ctx.get("expression")), "neutral")}
+
+
+spec(
+    "vision-watch", agent="VisionAgent", title="Observation comportementale (vision)",
+    system=("Le VisionAgent vient de signaler un événement à partir de la caméra d'une chambre (posture, activité, expression, nombre de personnes ; aucune image ne quitte la chambre). "
+            "Rédige UNE observation comportementale factuelle de 2 phrases au plus pour les transmissions infirmières, et propose une humeur observée parmi : calm, anxious, pain, sad, agitated, neutral. "
+            "Ne déduis rien de médical : décris ce qui est observé."),
+    format='{"observation": "2 phrases au plus", "mood": "calm|anxious|pain|sad|agitated|neutral"}', required=["observation"], max_tokens=4000, mock=_mock_vision,
+)
+
+
+def _mock_vitals(ctx: dict[str, Any]) -> dict[str, Any]:
+    var = ctx.get("variation_sur_10_min") or {}
+    moves = [f"{k} {'+' if v > 0 else ''}{v}" for k, v in var.items() if abs(v) >= 1]
+    n = (ctx.get("news2") or {}).get("score")
+    return {"reading": f"{ctx.get('alerte', 'Alerte')} en chambre {ctx.get('chambre')}. Sur 10 min : {', '.join(moves) or 'constantes stables'}." + (f" NEWS2 {n}." if n is not None else ""),
+            "watch": ["Recontrôler les constantes dans 15 min.", "Prévenir le médecin si la tendance se confirme."]}
+
+
+spec(
+    "vitals-trend", agent="VitalsAgent", title="Lecture de la tendance des constantes",
+    system=("Le VitalsAgent vient de lever une alerte sur une constante (seuils déterministes, adaptés au patient). À partir des constantes actuelles, de leur variation sur 10 minutes et du NEWS2, "
+            "rédige une lecture de tendance de 2 phrases au plus (ce qui monte, ce qui baisse, depuis quand) et 2 ou 3 points à surveiller. Cite les valeurs. N'interprète pas en diagnostic."),
+    format='{"reading": "2 phrases au plus", "watch": ["point à surveiller"]}', required=["reading"], max_tokens=4000, mock=_mock_vitals,
+)
+
+
+def _mock_environment(ctx: dict[str, Any]) -> dict[str, Any]:
+    acts = "; ".join(f"{a['equipement']} {a['action']} ({a['motif']})" for a in ctx.get("actions") or [])
+    return {"note": f"Chambre {ctx.get('chambre')} : {acts or 'aucune action'}. Mesure de confort, sans effet sur un risque clinique.", "next_check": "Revérifier la température de la chambre dans quelques minutes."}
+
+
+spec(
+    "environment-comfort", agent="EnvironmentAgent", title="Note de confort de la chambre",
+    system=("L'EnvironmentAgent vient d'agir sur les équipements d'une chambre (fenêtre, chauffage, climatisation) selon des règles déterministes. "
+            "Rédige une note de confort d'une ou deux phrases pour l'équipe : ce qui a été fait et pourquoi (température de la chambre, air extérieur, fragilité du patient), et quand revérifier. "
+            "Rappelle que c'est une mesure de confort et non un traitement."),
+    format='{"note": "1 à 2 phrases", "next_check": "quand revérifier"}', required=["note"], max_tokens=4000, mock=_mock_environment,
+)
+
+# Déclencheurs de chaque workflow (carte des agents : n8n/README.md et GET /api/agents/map)
+TRIGGERS = {
+    "fever-pathway": "fièvre vraie détectée (température centrale) ; résultats du bilan biologique",
+    "record-summary": "bouton « Générer la synthèse » du dossier médical",
+    "diagnostics-live": "changement des hypothèses diagnostiques d'un patient (au plus toutes les 2 min)",
+    "medication-reminders": "prise due, relance (> 30 min), médecin prévenu (> 60 min)",
+    "intervention-report": "risque résolu et vérifié",
+    "psych-monitoring": "score de bien-être sous le seuil",
+    "crisis-prediction": "prédiction passant à « élevé » ou « critique »",
+    "ambulance-dispatch": "départ d'une ambulance",
+    "vision-watch": "événement signalé par la vision (lever nocturne, chute, douleur…), au plus toutes les 5 min par chambre",
+    "vitals-trend": "alerte sur une constante, au plus toutes les 5 min par chambre",
+    "environment-comfort": "action de l'EnvironmentAgent sur un équipement, au plus toutes les 5 min par chambre",
+}
+V1_WORKFLOWS = [
+    {"workflow": "risk-triage", "agent": "RiskAgent", "title": "Explication du risque, plan d'action, alerte, attente d'acquittement, escalade", "trigger": "tout nouveau risque (webhook risk-created)"},
+    {"workflow": "risk-verify", "agent": "FollowUpAgent", "title": "Revérification après le passage du soignant", "trigger": "sortie du personnel de la chambre (webhook staff-left)"},
+    {"workflow": "shift-report", "agent": "ReportAgent", "title": "Rapport de garde", "trigger": "Cron 07:45 et 19:45, bouton « Générer »"},
+    {"workflow": "pharmacy-alerts", "agent": "ReportAgent", "title": "Alertes de stock et de péremption", "trigger": "Cron quotidien 08:00, bouton de la vue Pharmacie"},
+]
+
+
+def agent_map() -> list[dict[str, str]]:
+    return V1_WORKFLOWS + [{"workflow": name, "agent": s["agent"], "title": s["title"], "trigger": TRIGGERS.get(name, "")} for name, s in SPECS.items()]

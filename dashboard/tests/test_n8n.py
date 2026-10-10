@@ -150,3 +150,30 @@ def test_local_fallback_when_n8n_is_down(client, monkeypatch):
     assert client.get("/api/n8n/status").json()["status"] == "offline"
     logs = client.get("/api/agents/logs?room=101&limit=30").json()
     assert any("n8n indisponible" in l["reasoning"] for l in logs if l["agent"] == "RiskAgent")
+
+
+def test_every_agent_has_a_workflow_and_a_local_fallback(client):
+    """Étape 9 V2 : un workflow n8n par agent, importable (fichier JSON sans secret), avec repli local."""
+    import json
+    from pathlib import Path
+
+    from app import orchestration
+    from app.agents import manager
+    from app.agents.specs import SPECS, agent_map, build_prompt, validate
+
+    rows = client.get("/api/agents/map").json()["rows"]
+    assert len(rows) == len(agent_map()) >= 15
+    agents_with_workflow = {r["agent"] for r in rows}
+    assert {cls.name for cls in manager.AGENT_CLASSES} <= agents_with_workflow, "chaque agent doit avoir son workflow"
+    folder = Path(__file__).resolve().parents[2] / "n8n" / "workflows"
+    for r in rows:
+        wf = json.loads((folder / f"{r['workflow']}.json").read_text(encoding="utf-8"))
+        text = json.dumps(wf)
+        assert wf["name"] == r["workflow"] and "sk-ant" not in text and "Bearer " not in text and r["trigger"]
+        assert any(n["type"] == "n8n-nodes-base.webhook" and n["parameters"]["authentication"] == "headerAuth" for n in wf["nodes"])
+    for name, s in SPECS.items():
+        assert name in orchestration._handlers, f"gestionnaire manquant pour {name}"
+        system, user = build_prompt(name, {"exemple": 1})
+        assert "JAMAIS" in system and "JSON" in user
+        assert validate(name, s["mock"]({})) is None or s["required"], name          # la réponse de secours est exploitable
+        assert validate(name, None) is not None

@@ -104,7 +104,7 @@ def test_reset_clears_everything(client):
         r = client.post("/api/demo/reset")
         assert r.json()["status"] == "reset"
         types = []
-        for _ in range(6):
+        for _ in range(60):  # les agents V2 diffusent d'autres messages (prédictions, diagnostics…) entre-temps
             types.append(json.loads(ws.receive_text())["type"])
             if "reset" in types:
                 break

@@ -32,6 +32,7 @@ class EnvironmentAgent(Agent):
         self.pending_manual: dict[tuple[str, str], tuple[str, str, str]] = {}
         self.rechecks: dict[str, tuple[float, float, list[str]]] = {}  # room -> (échéance, température de départ, équipements actionnés)
         self.fragile_cache: dict[str, tuple[float, bool, str]] = {}
+        self.insight_at: dict[str, float] = {}
 
     async def handle(self, ev: Event) -> None:
         if ev.topic == "internal/reset":
@@ -153,7 +154,22 @@ class EnvironmentAgent(Agent):
             r = await send_command(room, equipment, action, requested_by=self.name, reason=why)
             out.append(f"{equipment} {action} ({why}) → {'ack ' + str(r['ack'].get('state')) if r['ok'] else 'sans ack'}")
         self.last_action[room] = time.time()
+        await self.insight(room, actions, out)
         return out
+
+    async def insight(self, room: str, actions: list[tuple[str, str, str]], results: list[str]) -> None:
+        """Note de confort rédigée par le LLM (workflow n8n `environment-comfort`), au plus une par chambre toutes les 5 min."""
+        now = time.time()
+        if not actions or now - self.insight_at.get(room, 0) < 300:
+            return
+        self.insight_at[room] = now
+        from .. import orchestration
+
+        rs = handler.room_state(room)
+        frag, why = self.fragile(room)
+        await orchestration.ask("environment-comfort", f"{room}:{int(now)}", {"task": "environment_comfort", "chambre": room, "ambiance": rs.get("env"), "equipements": rs.get("equipment"),
+                                                                                "actions": [{"equipement": e, "action": a, "motif": w} for e, a, w in actions], "resultats": results,
+                                                                                "patient_fragile": why if frag else None, "temperature_cutanee": rs.get("skinTempC")}, room=room)
 
     async def thermal_rise(self, room: str, a: dict[str, Any]) -> None:
         """Simple hausse thermique signalée par le FeverAgent : action directe, puis revérification."""
@@ -210,3 +226,18 @@ class EnvironmentAgent(Agent):
             t = handler.room_state(room)["env"].get("tempC")
             if t is not None:
                 await self.evaluate(room, float(t), bool(handler.room_state(room)["env"].get("doorOpen")))
+
+
+from typing import Optional  # noqa: E402
+
+from .. import orchestration as _orchestration  # noqa: E402
+
+
+@_orchestration.handler("environment-comfort")
+async def _on_comfort_note(ref: str, result: dict[str, Any], meta: dict[str, Any]) -> Optional[str]:
+    """Note de confort affichée avec l'ambiance de la chambre (`room_state.envNote`)."""
+    room = ref.split(":")[0]
+    rs = handler.room_state(room)
+    rs["envNote"] = {"text": str(result.get("note") or "")[:400], "next_check": str(result.get("next_check") or "")[:160], "provider": meta.get("provider") or "anthropic (n8n)", "ts": time.time()}
+    handler._dirty_rooms.add(room)
+    return None

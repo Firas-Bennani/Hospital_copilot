@@ -7,10 +7,11 @@ enregistre les `MoodObservation` à partir des expressions.
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, Optional
 
 from ..bus import Event, bus
 from ..db import session_scope
+from ..ingest import handler
 from ..models import MoodObservation
 from .base import Agent
 from .context import is_night
@@ -61,6 +62,23 @@ class VisionAgent(Agent):
             return
         t.reported[rtype] = now
         await bus.publish("internal/risk_candidate", {"room": room, "type": rtype, "details": details, "source_agent": self.name})
+        await self.insight(room, rtype, details)
+
+    async def insight(self, room: str, rtype: str, details: dict[str, Any]) -> None:
+        """Observation comportementale rédigée par le LLM (workflow n8n `vision-watch`), au plus une par chambre toutes les 5 min."""
+        t = self.track(room)
+        now = time.time()
+        if now - t.reported.get("_insight", 0) < 300:
+            return
+        t.reported["_insight"] = now
+        from .. import orchestration
+        from .context import is_night
+        from .plans import TYPE_LABELS
+
+        rs = handler.room_state(room)
+        await orchestration.ask("vision-watch", f"{room}:{int(now)}", {"task": "vision_watch", "chambre": room, "evenement": TYPE_LABELS.get(rtype, rtype), "details": details, "nuit": is_night(),
+                                                                         "posture": t.posture, "activite": t.activity, "expression": t.expression, "personnes": t.persons, "confiance": rs.get("confidence"),
+                                                                         "source_vision": rs.get("visionSource")}, room=room)
 
     async def handle(self, ev: Event) -> None:
         if ev.topic == "internal/reset":
@@ -208,3 +226,21 @@ class VisionAgent(Agent):
                 await self.candidate(room, "toilet_too_long", {"durationMin": round(dur / 60)}, min_interval=600)
             elif t.absent_kind != "toilet" and dur > OUT_OF_ROOM_MAX_S:
                 await self.candidate(room, "patient_out_of_room", {"durationMin": round(dur / 60)}, min_interval=900)
+
+
+from .. import orchestration as _orchestration  # noqa: E402
+
+
+@_orchestration.handler("vision-watch")
+async def _on_vision_note(ref: str, result: dict[str, Any], meta: dict[str, Any]) -> Optional[str]:
+    """Note d'observation rangée avec les humeurs observées (lue par le rapport de garde)."""
+    room = ref.split(":")[0]
+    note = str(result.get("observation") or "").strip()[:500]
+    if not note:
+        return None
+    with session_scope() as s:
+        from ..risks import patient_context
+
+        ctx = patient_context(s, room)
+        s.add(MoodObservation(admission_id=ctx.get("admission_id"), room_code=room, mood=str(result.get("mood") or "neutral")[:20], source="vision-watch", note=note))
+    return None
