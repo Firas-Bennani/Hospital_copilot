@@ -106,6 +106,11 @@ class Settings:
         self.fever_lab_delay_s = _float("FEVER_LAB_DELAY_S", 45.0)  # arrivée des résultats biologiques simulés
         self.thermal_recheck_s = _float("THERMAL_RECHECK_S", 180.0)  # revérification après une simple hausse thermique
         self.outdoor_temp_c = _float("OUTDOOR_TEMP_C", 18.0)  # température extérieure si le simulateur ne la fournit pas
+        # Plan d'administration (V2) : retard > 30 min ⇒ relance, > 60 min ⇒ médecin prévenu (raccourcis en démo)
+        self.med_relaunch_s = _float("MED_RELAUNCH_S", 1800.0)
+        self.med_escalate_s = _float("MED_ESCALATE_S", 3600.0)
+        self.med_due_window_s = _float("MED_DUE_WINDOW_S", 900.0)  # « à faire maintenant » : de l'heure prévue − 15 min à + 30 min
+        self.diagnostics_tick_s = _float("DIAGNOSTICS_TICK_S", 10.0)
         self.escalation_critical_s = _float("ESCALATION_CRITICAL_S", 120.0)
         self.escalation_high_s = _float("ESCALATION_HIGH_S", 600.0)
         self.escalation_medium_s = _float("ESCALATION_MEDIUM_S", 1800.0)

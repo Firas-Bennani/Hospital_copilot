@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 from ..config import settings
 from .base import Agent
+from .care import DiagnosticsAgent, InterventionAgent, MedicationAgent
 from .environment import EnvironmentAgent
 from .fever import FeverAgent
 from .followup import FollowUpAgent
@@ -19,7 +20,7 @@ from .vitals import VitalsAgent
 logger = logging.getLogger("hackcure.agents")
 
 agents: dict[str, Agent] = {}
-AGENT_CLASSES: list[type[Agent]] = [VisionAgent, VitalsAgent, EnvironmentAgent, RiskAgent, FollowUpAgent, ReportAgent, FeverAgent]
+AGENT_CLASSES: list[type[Agent]] = [VisionAgent, VitalsAgent, EnvironmentAgent, RiskAgent, FollowUpAgent, ReportAgent, FeverAgent, DiagnosticsAgent, MedicationAgent, InterventionAgent]
 
 
 async def start() -> list[asyncio.Task]:

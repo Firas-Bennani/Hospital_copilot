@@ -58,6 +58,9 @@ const Nav = (() => {
         { id: 'prescription', label: 'Ordonnance', icon: '℞', perm: 'view_medical_docs' },
         { id: 'history', label: 'Historique patients', icon: '🗂️', perm: 'view_history' },
         { id: 'dossier', label: 'Dossier médical', icon: '📚', perm: 'open_medical_record' },
+        { id: 'diagnostics', label: 'Diagnostics live', icon: '🧬', perm: 'view_diagnostics' },
+        { id: 'treatment', label: 'Ordonnance de traitement', icon: '💉', perm: 'view_treatment_orders' },
+        { id: 'careplan', label: 'Plan de soins', icon: '🗓️', perm: 'view_care_plan' },
         { id: 'users', label: 'Utilisateurs', icon: '👥', perm: 'manage_users' },
     ];
 

@@ -51,6 +51,14 @@ PERMISSIONS: dict[str, set[str]] = {
     "view_record_identity": {"receptionist"},
     "view_record_pharmacy": {"pharmacist"},
     "open_medical_record": ALL | PSY,
+    # V2 étape 4 — diagnostics live (fil médecin ↔ infirmier), ordonnance de traitement, plan de soins
+    "view_diagnostics": {"nurse"} | DOCTORS | PSY,
+    "decide_diagnostics": DOCTORS,
+    "post_care_message": {"nurse"} | DOCTORS | PSY,
+    "view_treatment_orders": {"nurse", "pharmacist"} | DOCTORS | PSY,
+    "write_treatment_orders": DOCTORS,
+    "view_care_plan": {"nurse"} | DOCTORS | PSY,
+    "administer_medication": {"nurse"} | DOCTORS,
     "run_demo": ALL,
 }
 

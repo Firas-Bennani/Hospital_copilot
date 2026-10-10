@@ -112,3 +112,66 @@ spec(
     format='{"summary": "3 à 5 phrases", "allergies": ["..."], "chronic": ["maladie (depuis AAAA)"], "history": ["antécédent (AAAA)"], "active_treatments": ["médicament posologie"], "attention": ["point d\'attention"]}',
     required=["summary"], mock=_mock_record_summary,
 )
+
+
+# ─── DiagnosticsAgent ─────────────────────────────────────────────────────────
+def _mock_diagnostics(ctx: dict[str, Any]) -> dict[str, Any]:
+    hyps = ctx.get("hypotheses") or []
+    lead = hyps[0] if hyps else None
+    p = ctx.get("patient") or {}
+    if not lead:
+        return {"summary": "Aucune hypothèse au-dessus du seuil : surveillance habituelle.", "next_steps": []}
+    return {"summary": f"{p.get('nom', 'Patient')} : l'hypothèse la plus étayée est « {lead['label']} » (probabilité {lead['probability']}) — éléments : {'; '.join(lead['pros'][:4])}."
+                       + (f" À nuancer : {'; '.join(lead['cons'])}." if lead.get("cons") else ""),
+            "next_steps": lead.get("exams", [])[:3]}
+
+
+spec(
+    "diagnostics-live", agent="DiagnosticsAgent", title="Synthèse des hypothèses diagnostiques",
+    system=("Tu reçois les hypothèses diagnostiques d'un patient hospitalisé, calculées par des règles déterministes (éléments pour, contre, examens utiles). "
+            "Rédige pour le médecin et l'infirmier une synthèse de 3 phrases au plus, puis au plus 4 prochaines étapes concrètes (examens ou surveillances déjà listés). "
+            "N'ajoute aucune hypothèse, ne change aucune probabilité, ne conclus pas à un diagnostic."),
+    format='{"summary": "3 phrases au plus", "next_steps": ["étape concrète"]}', required=["summary"], mock=_mock_diagnostics,
+)
+
+
+# ─── MedicationAgent ──────────────────────────────────────────────────────────
+def _mock_medication(ctx: dict[str, Any]) -> dict[str, Any]:
+    if ctx.get("alerte_allergie"):
+        return {"vigilance": f"{ctx['alerte_allergie']} — ne pas administrer sans avis médical."}
+    if ctx.get("allergies") and ctx["allergies"] != "aucune connue":
+        return {"vigilance": f"Allergies connues : {ctx['allergies']}. Vérifier l'identité du patient et le médicament avant l'administration."}
+    return {"vigilance": "Vérifier l'identité du patient, la dose et la voie avant l'administration."}
+
+
+spec(
+    "medication-reminders", agent="MedicationAgent", title="Rappel de prise de médicament",
+    system=("Un rappel de prise de médicament va être envoyé à l'équipe soignante (le texte du rappel est déjà rédigé par la plateforme). "
+            "Ajoute UN point de vigilance utile et court pour cette prise et ce patient : allergie, condition de prise, surveillance après administration. "
+            "Si une alerte d'allergie est fournie, c'est le point de vigilance. N'invente ni dose ni horaire."),
+    format='{"vigilance": "une phrase"}', required=["vigilance"], max_tokens=4000, mock=_mock_medication,
+)
+
+
+# ─── InterventionAgent ────────────────────────────────────────────────────────
+def _mock_intervention(ctx: dict[str, Any]) -> dict[str, Any]:
+    r = ctx.get("risque") or {}
+    done = [s["etape"] for s in ctx.get("plan_d_action") or [] if s.get("faite")]
+    visits = ctx.get("visites") or []
+    return {
+        "summary": f"{r.get('titre', 'Intervention')} — détecté à {r.get('detecte_a')}, résolu et vérifié à {r.get('resolu_a')}.",
+        "context": f"{r.get('titre')} (sévérité {r.get('severite')}) détecté à {r.get('detecte_a')} par {r.get('source')}." + (f" Escaladé à {r['escalade_a']}." if r.get("escalade_a") else ""),
+        "intervention": ([f"Prise en charge à {r['pris_en_charge_a']}."] if r.get("pris_en_charge_a") else []) + [f"Visite du personnel de {v['debut']} à {v['fin'] or '—'} ({v['personnes']} personnes)." for v in visits]
+                        + ([f"Étapes du plan réalisées : {'; '.join(done)}."] if done else ["Aucune étape du plan n'a été cochée dans la plateforme."]),
+        "outcome": f"Revérification : {r.get('verification') or 'critère satisfait'}. Risque clos à {r.get('resolu_a')}.",
+        "follow_up": ["Surveillance habituelle des constantes.", "Compléter ce compte rendu si nécessaire avant signature."],
+    }
+
+
+spec(
+    "intervention-report", agent="InterventionAgent", title="Brouillon de compte rendu d'intervention",
+    system=("Rédige le BROUILLON du compte rendu d'une intervention soignante, uniquement à partir du journal fourni (heures, détection, plan d'action, visites, revérification). "
+            "Style factuel et chronologique, avec les heures. Si une information n'est pas dans le journal, écris « non renseigné » : le soignant complétera avant de signer."),
+    format='{"summary": "une phrase", "context": "ce qui a été détecté, quand", "intervention": ["action horodatée"], "outcome": "résultat de la revérification", "follow_up": ["suite à donner"]}',
+    required=["summary", "intervention"], mock=_mock_intervention,
+)

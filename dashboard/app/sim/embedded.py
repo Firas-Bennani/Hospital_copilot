@@ -48,6 +48,20 @@ def _run_hook(hook: str, room: str) -> None:
     """Effets côté serveur d'une étape de résolution (ce que le simulateur ne peut pas faire seul)."""
     from .. import state
 
+    if hook == "administer_due":  # le soignant simulé administre les prises dues ou en retard de la chambre
+        from datetime import datetime, timezone
+
+        from sqlmodel import select
+
+        from .. import care
+        from ..db import session_scope
+        from ..models import MedicationDose
+
+        with session_scope() as s:
+            for d in s.exec(select(MedicationDose).where(MedicationDose.room_code == room, MedicationDose.status == "scheduled", MedicationDose.due_at <= datetime.now(timezone.utc))).all():
+                care.give(s, d, "infirmier (simulation)", "administré pendant la visite")
+        manager.broadcast_nowait({"type": "care_plan", "event": "given", "room": room})
+        return
     if hook == "behavior_recover":
         pid = state.patient_for_room(room)
         if pid:

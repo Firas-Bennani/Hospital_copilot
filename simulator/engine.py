@@ -56,7 +56,7 @@ class Profile:
 DEFAULT_PROFILES: dict[str, Profile] = {
     "101": Profile(hr=78, spo2=96, sys=138, dia=82, temp=37.1, rr=18, oxygen_flow=1.0, iv_rate=83),  # pneumopathie, diabète
     "102": Profile(hr=84, spo2=97, sys=112, dia=70, temp=36.7, rr=18, rhythm="afib", iv_rate=42, variability=1.4),  # insuff. cardiaque
-    "103": Profile(hr=88, spo2=91, sys=130, dia=76, temp=36.9, rr=22, oxygen_flow=2.0, iv_rate=63, nutrition_rate=60),  # BPCO
+    "103": Profile(hr=86, spo2=91, sys=130, dia=76, temp=36.9, rr=19, oxygen_flow=2.0, iv_rate=63, nutrition_rate=60),  # BPCO
     "104": Profile(hr=76, spo2=97, sys=118, dia=72, temp=37.0, rr=16, iv_rate=100, transfusion_rate=120),  # post-op hanche
 }
 

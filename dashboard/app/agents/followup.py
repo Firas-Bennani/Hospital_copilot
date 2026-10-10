@@ -79,6 +79,14 @@ def verify_risk(rtype: str, rs: dict[str, Any]) -> tuple[bool, str]:
     if rtype == "transfusion_reaction":
         dev = (rs.get("devices") or {}).get(f"{rs.get('room')}-transfusion") or {}
         return not (dev.get("metrics") or {}).get("reaction"), "réaction " + ("présente" if (dev.get("metrics") or {}).get("reaction") else "absente")
+    if rtype == "medication_late":
+        from .. import care
+        from ..db import session_scope as _scope
+
+        with _scope() as _s:
+            late = care.overdue_in_room(_s, str(rs.get("room")))
+            labels = ", ".join(d.label for d in late)
+        return not late, ("toutes les prises dues sont enregistrées" if not late else f"prise(s) toujours en retard : {labels}")
     if rtype == "behavioral_risk":
         lvl = (rs.get("behavior") or {}).get("risk_level", "none")
         return lvl in ("none", "low"), f"risque comportemental {lvl}"
@@ -239,6 +247,9 @@ class FollowUpAgent(Agent):
                 rtype, sev, title = risk.type, risk.severity, risk.title
             await manager.broadcast({"type": "risk", "event": "resolved" if ok else "escalated", "risk": payload})
             if ok:
+                from ..bus import bus
+
+                await bus.publish("internal/risk/resolved", {"risk_id": rid, "room": room, "type": rtype, "by": self.name, "detail": why})
                 await self.log(room, input=f"re-vérification #{rid} ({origin}) : {why} ; étapes du plan {done}/{len(steps)}",
                                reasoning=f"Critère de vérification « {TYPE_LABELS.get(rtype, rtype)} » satisfait sur l'état réel de la chambre.",
                                output=f"risque #{rid} résolu et vérifié", risk_id=rid)

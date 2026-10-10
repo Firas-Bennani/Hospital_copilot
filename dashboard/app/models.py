@@ -389,3 +389,97 @@ class FeverPathway(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
     closed_at: Optional[datetime] = None
+
+
+# ─── V2 étape 4 : diagnostics live, fil médecin ↔ infirmier, ordonnance de traitement, plan d'administration ──
+class DiagnosticHypothesis(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    patient_pk: int = Field(foreign_key="patient.id", index=True)
+    admission_id: Optional[int] = Field(default=None, foreign_key="admission.id")
+    room_code: str = Field(default="", index=True)
+    code: str = Field(index=True)
+    label: str = ""
+    score: float = 0.0
+    probability: str = "faible"  # faible | modérée | élevée
+    pros_json: str = "[]"
+    cons_json: str = "[]"
+    exams_json: str = "[]"
+    status: str = "active"  # active | confirmed | rejected | inactive (plus d'élément en faveur)
+    note: str = ""
+    decided_by: Optional[str] = None
+    decided_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class CareMessage(SQLModel, table=True):
+    """Fil de communication médecin ↔ infirmier, par patient."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    patient_pk: int = Field(foreign_key="patient.id", index=True)
+    room_code: str = ""
+    author: str = ""
+    author_name: str = ""
+    role: str = ""
+    kind: str = "message"  # message | decision | ai
+    body: str = ""
+    mentions: str = ""  # rôles mentionnés, séparés par des virgules
+    hypothesis_id: Optional[int] = None
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class TreatmentOrder(SQLModel, table=True):
+    """Ordonnance de traitement HOSPITALIÈRE (distincte de l'ordonnance de sortie `Prescription`)."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    admission_id: int = Field(foreign_key="admission.id", index=True)
+    patient_pk: int = Field(foreign_key="patient.id", index=True)
+    room_code: str = ""
+    prescriber: str = ""
+    prescriber_name: str = ""
+    indication: str = ""
+    status: str = "draft"  # draft | active | stopped
+    created_at: datetime = Field(default_factory=utcnow)
+    signed_at: Optional[datetime] = None
+    stopped_at: Optional[datetime] = None
+
+
+class TreatmentOrderLine(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    order_id: int = Field(foreign_key="treatmentorder.id", index=True)
+    medication_id: int = Field(foreign_key="medication.id")
+    dci: str = ""
+    dose: str = ""
+    route: str = "PO"
+    times: str = ""  # horaires « 08:00,14:00,20:00 » ; vide pour une prise conditionnelle
+    duration_days: int = 3
+    prn: bool = False  # « si besoin » : prise déclenchée par une condition
+    condition_metric: str = ""  # tempC | pain | sys | spo2 | glucose
+    condition_op: str = ">"
+    condition_value: Optional[float] = None
+    min_interval_h: float = 6.0
+    allergy_alert: str = ""
+    interaction_alert: str = ""
+
+
+class MedicationDose(SQLModel, table=True):
+    """Une prise du plan d'administration horodaté."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    line_id: int = Field(foreign_key="treatmentorderline.id", index=True)
+    order_id: int = Field(foreign_key="treatmentorder.id", index=True)
+    admission_id: int = Field(foreign_key="admission.id")
+    patient_pk: int = Field(foreign_key="patient.id", index=True)
+    room_code: str = Field(default="", index=True)
+    medication_id: int = Field(foreign_key="medication.id")
+    label: str = ""
+    due_at: datetime = Field(index=True)
+    status: str = Field(default="scheduled", index=True)  # scheduled | given | not_given | cancelled
+    conditional: bool = False
+    given_at: Optional[datetime] = None
+    given_by: Optional[str] = None
+    note: str = ""
+    reason: str = ""
+    reminded_at: Optional[datetime] = None
+    relaunched_at: Optional[datetime] = None
+    escalated_at: Optional[datetime] = None

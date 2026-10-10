@@ -28,6 +28,7 @@ TYPE_LABELS: dict[str, str] = {
     "thermal_discomfort": "Inconfort thermique",
     "local_alarm": "Alarme locale (edge)",
     "behavioral_risk": "Comportement à risque (vision)",
+    "medication_late": "Prise de médicament en retard",
 }
 
 # Sévérité déterministe : fonction(détails) -> low|medium|high|critical

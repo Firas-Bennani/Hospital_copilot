@@ -136,6 +136,7 @@ async def request_resolution(risk_id: int, body: Optional[ResolveIn] = None, ses
         from ..notify import notify
 
         n8n.release_soon([risk_id], "risque résolu")
+        await bus.publish("internal/risk/resolved", {"risk_id": risk_id, "room": r.room_code, "type": r.type, "by": body.source, "detail": body.justification})
 
         await notify("info", f"Résolu — {r.title}", body.justification or "Vérifié par n8n.", room=r.room_code, risk_id=risk_id, target_role="nurse", telegram=False)
         return payload
