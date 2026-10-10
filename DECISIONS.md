@@ -23,3 +23,6 @@
 | 09:10 | Statut `thinking/acting` des agents uniquement sur les traitements notables (pas à chaque message 2 Hz) ; `AgentLog` idem. | Lisibilité du panneau Agents et volume de la base. |
 | 09:15 | Les seuils VitalsAgent sont adaptés par mots-clés des antécédents (BPCO → SpO2 cible 88 %, fibrillation → FC 120). | « Seuils par métrique et par patient » sans table de configuration supplémentaire. |
 | 09:20 | Le mock LLM ré-utilise le JSON de contexte du prompt pour rédiger des textes qui citent les vraies valeurs ; même interface que le client Anthropic. | Démo crédible hors-ligne, bascule sans changement de code avec `ANTHROPIC_API_KEY`. |
+| 10:20 | Le dossier patient est exposé sous `/api/records` (pas `/api/patients`). | `GET /api/patients` est un endpoint legacy qui doit garder sa structure (dict) pour le frontend 3D existant. |
+| 10:25 | Signature d une ordonnance avec alerte allergie refusée (409) sauf `force=true` explicite ; la ligne reste marquée et imprimée avec l avertissement. | Aide à la décision : le médecin garde la main, mais le système trace et rend visible la contre-indication. |
+| 10:30 | Aperçu caméra = proxy du flux MJPEG flouté de l edge (`EDGE_CAMERA_URL`) ; sans Pi, vue schématique SVG animée à partir de room_state. | Vie privée (aucune image stockée côté serveur) et démo sans matériel. |

@@ -66,7 +66,8 @@ class ReportAgent(Agent):
             })
         return {"task": "shift_report", "period": f"{start.astimezone().strftime('%d/%m %H:%M')} → {end.astimezone().strftime('%d/%m %H:%M')}", "rooms": rooms}
 
-    async def generate_shift_report(self, start: Optional[datetime] = None, end: Optional[datetime] = None, author: str = "ReportAgent") -> ShiftReport:
+    async def generate_shift_report(self, start: Optional[datetime] = None, end: Optional[datetime] = None, author: str = "ReportAgent") -> int:
+        """Renvoie l'identifiant du ShiftReport créé."""
         end = end or datetime.now(timezone.utc)
         start = start or (end - timedelta(hours=12))
         sw = Stopwatch()
@@ -90,10 +91,10 @@ class ReportAgent(Agent):
             await self.log(None, input=f"rapport de garde {ctx['period']} ({sum(len(r['risks']) for r in ctx['rooms'])} risques, {sum(len(r['events']) for r in ctx['rooms'])} événements)",
                            reasoning=f"Synthèse par chambre (état, constantes mesurées, risques, actions cochées, humeur) rédigée par {provider} ; brouillon à valider.",
                            output=f"ShiftReport #{rid} créé ({len(md)} caractères)", duration_ms=sw.ms)
-        with session_scope() as s:
-            return s.get(ShiftReport, rid)
+        return rid
 
-    async def draft_medical_report(self, admission_id: int, author: str) -> MedicalReport:
+    async def draft_medical_report(self, admission_id: int, author: str) -> int:
+        """Renvoie l'identifiant du MedicalReport (brouillon) créé."""
         from ..risks import patient_context
 
         sw = Stopwatch()
@@ -128,5 +129,4 @@ class ReportAgent(Agent):
                 s.flush()
                 rid = rep.id
             await self.log(context["admission"]["room_code"], input=f"brouillon de rapport médecin pour l'admission #{admission_id}", reasoning=f"Rédigé par {provider} à partir des données du dossier uniquement ; sections manquantes marquées « à compléter ».", output=f"MedicalReport #{rid} (brouillon)", duration_ms=sw.ms)
-        with session_scope() as s:
-            return s.get(MedicalReport, rid)
+        return rid
