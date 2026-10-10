@@ -22,6 +22,7 @@ os.environ.setdefault("ESCALATION_CRITICAL_S", "2")
 os.environ.setdefault("ESCALATION_HIGH_S", "3")
 os.environ.setdefault("ESCALATION_MEDIUM_S", "4")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "")
+os.environ.setdefault("VITALS_TICK_S", "1")
 os.environ.setdefault("N8N_ENABLED", "0")  # jamais de vrai n8n ni de vraie API pendant les tests
 os.environ["PLATFORM_SERVICE_TOKEN"] = "test-service-token"
 os.environ["N8N_WEBHOOK_SECRET"] = "test-webhook-secret"

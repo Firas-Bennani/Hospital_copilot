@@ -424,6 +424,7 @@ const HospitalScene = (() => {
     function buildWindow(room) {
         const cx = (WINDOW.x0 + WINDOW.x1) / 2, w = WINDOW.x1 - WINDOW.x0, h = WINDOW.top - WINDOW.sill, zc = -3 - WALL_T / 2;
         const pane = B(w, h, 0.03, MAT.glass, cx, WINDOW.sill + h / 2, zc, room, false); pane.renderOrder = 2;
+        room.userData.windowPane = pane;   // equipment.js la masque quand la fenêtre est ouverte
         B(w + 0.12, 0.06, 0.2, MAT.white, cx, WINDOW.top + 0.03, zc, room);
         B(w + 0.12, 0.06, 0.2, MAT.white, cx, WINDOW.sill - 0.03, zc, room);
         [WINDOW.x0 - 0.03, WINDOW.x1 + 0.03, cx].forEach(x => B(0.06, h, 0.2, MAT.white, x, WINDOW.sill + h / 2, zc, room));
@@ -1570,6 +1571,15 @@ const HospitalScene = (() => {
         renderer.dispose();
     }
 
+    // Vol de caméra vers un point exprimé dans le repère local d'une chambre (ex. sa fenêtre) — ajout V2
+    function flyToLocal(roomId, posLocal, targetLocal, fov = 60, duration = 0.5) {
+        const room = roomGroups[roomId]; if (!room) return;
+        room.updateMatrixWorld(true);
+        moveCameraTo(room.localToWorld(V(posLocal)), room.localToWorld(V(targetLocal)), duration, fov);
+        const ov = document.getElementById('cctv-overlay'); if (ov) ov.classList.add('cctv-hidden');
+    }
+    function focusOnWindow(roomId) { flyToLocal(roomId, [0.6, 1.9, 1.6], [(WINDOW.x0 + WINDOW.x1) / 2, 1.5, -3], 62); }
+
     return { init, getScene, getCamera, getBedParts, getBedWorldPosition, focusOnPatient, zoomToRoom, zoomToReception, resetCamera, topDownView, dispose, BED,
-        setMonitorVitals, setRoomRiskColor, getRoomGroup, getRoomConfig };
+        setMonitorVitals, setRoomRiskColor, getRoomGroup, getRoomConfig, flyToLocal, focusOnWindow };
 })();

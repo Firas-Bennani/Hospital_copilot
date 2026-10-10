@@ -98,6 +98,9 @@ class Settings:
         self.agents_enabled = _bool("AGENTS_ENABLED", True)
         # Délais FollowUp en secondes (valeurs « simulées » courtes pour la démo)
         self.followup_recheck_s = _float("FOLLOWUP_RECHECK_S", 120.0)
+        # V2 : en simulation, « Je prends en charge » fait intervenir un soignant virtuel (scénario *_resolves)
+        self.auto_resolution = _bool("AUTO_RESOLUTION", True)
+        self.vitals_tick_s = _float("VITALS_TICK_S", 20.0)  # période du calcul NEWS2 / tendances
         self.escalation_critical_s = _float("ESCALATION_CRITICAL_S", 120.0)
         self.escalation_high_s = _float("ESCALATION_HIGH_S", 600.0)
         self.escalation_medium_s = _float("ESCALATION_MEDIUM_S", 1800.0)

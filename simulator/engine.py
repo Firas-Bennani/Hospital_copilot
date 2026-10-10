@@ -83,6 +83,7 @@ class VirtualRoom:
     expression_conf: float = 0.6
     persons: int = 1
     staff_inside: bool = False
+    staff_role: Optional[str] = None  # nurse | duty_doctor | psychiatrist… (avatar affiché dans la 3D)
     staff_since: Optional[float] = None
     patient_track: int = 1
     last_zone_before_absent: str = "bed"
@@ -232,7 +233,8 @@ class VirtualRoom:
         self.expression, self.expression_conf = "neutral", 0.7
         self.call_pressed = False
 
-    def staff_enter(self, persons: int = 2) -> None:
+    def staff_enter(self, persons: int = 2, role: Optional[str] = None) -> None:
+        self.staff_role = role or "nurse"
         self.staff_inside = True
         self.persons = max(2, persons)
         self.staff_since = time.time()
@@ -240,6 +242,7 @@ class VirtualRoom:
     def staff_leave(self) -> float:
         dur = time.time() - (self.staff_since or time.time())
         self.staff_inside = False
+        self.staff_role = None
         self.persons = 0 if self.posture == "absent" else 1
         self.staff_since = None
         return dur
@@ -339,6 +342,9 @@ class Scenario:
         self.description: str = data.get("description", "")
         self.room: str = str(data.get("room", "104"))
         self.duration: float = float(data.get("duration", 0))
+        # scénario de résolution : types de risque traités et rôle du soignant qui intervient
+        self.resolves: list[str] = list(data.get("resolves", []))
+        self.role: Optional[str] = data.get("role")
         self.steps: list[ScenarioStep] = [
             ScenarioStep(at=float(s.get("at", 0)), room=str(s.get("room", self.room)), action=s["action"], params={k: v for k, v in s.items() if k not in ("at", "room", "action")})
             for s in data.get("steps", [])
@@ -359,7 +365,8 @@ class Scenario:
         for p in sorted(SCENARIOS_DIR.glob("*.yaml")):
             with open(p, encoding="utf-8") as f:
                 d = yaml.safe_load(f)
-            out.append({"name": d["name"], "description": d.get("description", ""), "room": str(d.get("room", "")), "duration": d.get("duration", 0)})
+            out.append({"name": d["name"], "description": d.get("description", ""), "room": str(d.get("room", "")), "duration": d.get("duration", 0),
+                        "resolves": d.get("resolves", []), "role": d.get("role")})
         return out
 
 
@@ -379,6 +386,9 @@ class SimEngine:
         self._pending: list[ScenarioStep] = []
         self.on_scenario_event: Optional[Callable[[str, dict[str, Any]], Any]] = None
         self.night_override: Optional[bool] = None
+        # résolutions (interventions d'un soignant) : jouées en surcouche du scénario principal, une par chambre à la fois
+        self.resolutions: dict[str, dict[str, Any]] = {}
+        self._resolution_queue: dict[str, list[tuple[str, Optional[str]]]] = {}
 
     # ── temps ───────────────────────────────────────────────────────────────
     @property
@@ -398,6 +408,7 @@ class SimEngine:
         dt = min(max(0.0, real_dt), 2.0) * self.speed
         self.sim_time += dt
         self._run_scenario_steps()
+        self._run_resolutions()
         n = 0
         for room in self.rooms.values():
             room.step(dt, self.sim_time, self.is_night)
@@ -425,6 +436,48 @@ class SimEngine:
             self._emit("scenario_stopped", {"name": self.scenario.name})
         self.scenario = None
         self._pending = []
+        self.resolutions.clear()
+        self._resolution_queue.clear()
+
+    def start_resolution(self, name: str, room: str, role: Optional[str] = None) -> Scenario:
+        """Lance un scénario `*_resolves` dans une chambre sans interrompre le scénario principal.
+        Une intervention à la fois par chambre : les suivantes attendent la sortie du soignant."""
+        room = str(room)
+        sc = Scenario.load(name)
+        sc.room = room
+        sc.role = role or sc.role or "nurse"
+        for s in sc.steps:
+            s.room = room
+            if s.action == "staff_enter":
+                s.params.setdefault("role", sc.role)
+        running = self.resolutions.get(room)
+        if running:
+            queue = self._resolution_queue.setdefault(room, [])
+            if running["scenario"].name != name and all(n != name for n, _ in queue):
+                queue.append((name, role))
+            return sc
+        self.resolutions[room] = {"scenario": sc, "t0": self.sim_time, "pending": list(sc.steps)}
+        logger.info("Résolution « %s » démarrée (chambre %s, %s)", sc.name, room, sc.role)
+        self._emit("resolution_started", {"name": sc.name, "room": room, "role": sc.role, "description": sc.description, "duration": sc.duration, "resolves": sc.resolves})
+        return sc
+
+    def _run_resolutions(self) -> None:
+        for room, run in list(self.resolutions.items()):
+            sc, elapsed = run["scenario"], self.sim_time - run["t0"]
+            while run["pending"] and run["pending"][0].at <= elapsed:
+                step = run["pending"].pop(0)
+                try:
+                    self.apply(step.room, step.action, **step.params)
+                    self._emit("resolution_step", {"name": sc.name, "room": room, "action": step.action, "at": step.at, "params": step.params})
+                except Exception as exc:
+                    logger.exception("Étape de résolution en erreur: %s", exc)
+            if not run["pending"] and elapsed >= sc.duration:
+                del self.resolutions[room]
+                self._emit("resolution_finished", {"name": sc.name, "room": room})
+                queue = self._resolution_queue.get(room) or []
+                if queue:
+                    name, role = queue.pop(0)
+                    self.start_resolution(name, room, role)
 
     def _run_scenario_steps(self) -> None:
         if not self.scenario:
@@ -458,8 +511,8 @@ class SimEngine:
         elif action == "recover":
             r.recover()
         elif action == "staff_enter":
-            r.staff_enter(int(params.get("persons", 2)))
-            self.publish(f"hackcure/room/{r.room}/vision/staff", {"ts": iso_now(), "source": self.source, "event": "staff_enter", "persons": r.persons})
+            r.staff_enter(int(params.get("persons", 2)), params.get("role"))
+            self.publish(f"hackcure/room/{r.room}/vision/staff", {"ts": iso_now(), "source": self.source, "event": "staff_enter", "persons": r.persons, "role": r.staff_role})
         elif action == "staff_leave":
             dur = r.staff_leave()
             self.publish(f"hackcure/room/{r.room}/vision/staff", {"ts": iso_now(), "source": self.source, "event": "staff_leave", "persons": r.persons, "durationSec": round(dur, 1)})
@@ -477,7 +530,8 @@ class SimEngine:
             r.reaction = bool(params.get("value", True))
         elif action == "call":
             r.call_pressed = bool(params.get("pressed", True))
-            self.publish(f"hackcure/room/{r.room}/call", {"ts": iso_now(), "source": self.source, "pressed": True})
+            if r.call_pressed:
+                self.publish(f"hackcure/room/{r.room}/call", {"ts": iso_now(), "source": self.source, "pressed": True})
         elif action == "env":
             if "tempC" in params:
                 r.trend("env_temp", float(params["tempC"]), float(params.get("duration", 30)))

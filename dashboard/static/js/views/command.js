@@ -95,7 +95,7 @@ const CommandView = (() => {
             try { const d = await Api.post(`/api/risks/${r.id}/steps`, { text: inp.value.trim() }); merge(d); paint(); } catch (e) { Api.toast(e.message, 'critical'); }
         });
         plan.querySelector('#cmd-ack')?.addEventListener('click', async () => {
-            try { const d = await Api.post(`/api/risks/${r.id}/ack`); merge(d); paint(); Api.toast(d.n8n_resumed ? 'Prise en charge enregistrée — n8n informé (attente levée).' : 'Prise en charge enregistrée.', 'success'); } catch (e) { Api.toast(e.message, 'critical'); }
+            try { const d = await Api.post(`/api/risks/${r.id}/ack`); merge(d); paint(); Api.toast((d.n8n_resumed ? 'Prise en charge enregistrée — n8n informé (attente levée).' : 'Prise en charge enregistrée.') + (d.resolution ? ` ${d.resolution.role_label} en route (chambre ${d.room}, simulation).` : ''), 'success'); } catch (e) { Api.toast(e.message, 'critical'); }
         });
         plan.querySelector('#cmd-resolve')?.addEventListener('click', async () => {
             try { const d = await Api.post(`/api/risks/${r.id}/resolve`); merge(d); paint(); Api.toast('Résolution demandée : le FollowUpAgent va re-vérifier la chambre.', 'success'); } catch (e) { Api.toast(e.message, 'critical'); }

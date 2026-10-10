@@ -1,6 +1,7 @@
 /**
  * HackCure — équipements animés des chambres (extension additive).
- *  - fenêtre : battant qui s'ouvre (chambres 101/102 qui ont une fenêtre) ;
+ *  - fenêtre : deux battants qui s'ouvrent vers l'intérieur dans les 4 chambres (la vitre fixe de scene.js est
+ *    masquée pendant l'ouverture ; les chambres 103/104, à paroi vitrée, reçoivent un châssis), courant d'air visible ;
  *  - radiateur qui rougeoie, climatiseur avec flux bleu, veilleuse ;
  *  - étiquettes de valeurs sur la potence (perfusion) et le chariot moniteur.
  * Tout est ajouté dans le groupe de la chambre (coordonnées locales : x −4..4, z −3..3).
@@ -44,18 +45,29 @@ const Equipment = (() => {
         const parts = { room, group: g, t: Math.random() * 10 };
         const topRow = cfg.rotY === 0;
 
-        // Fenêtre : battant ouvrable (seulement si la chambre a une fenêtre, rangée nord)
-        if (topRow && cfg.window) {
-            const W = cfg.window, w = (W.x1 - W.x0) / 2, h = W.top - W.sill;
-            const hinge = new THREE.Group(); hinge.position.set(W.x0, W.sill + h / 2, -3 + 0.1); g.add(hinge);
+        // Fenêtre : deux battants (charnières aux montants, ouverture vers l'intérieur), dans les 4 chambres
+        if (cfg.window) {
+            const W = cfg.window, w = (W.x1 - W.x0) / 2, h = W.top - W.sill, cy = W.sill + h / 2, z = -3 + 0.04;
             const sashMat = mat(0xffffff, { roughness: 0.4 });
-            const glass = new THREE.MeshStandardMaterial({ color: 0xbfe3ff, transparent: true, opacity: 0.35, roughness: 0.1 });
-            const sash = new THREE.Group(); hinge.add(sash);
-            box(w, 0.05, 0.05, sashMat, w / 2, h / 2 - 0.025, 0, sash); box(w, 0.05, 0.05, sashMat, w / 2, -h / 2 + 0.025, 0, sash);
-            box(0.05, h, 0.05, sashMat, 0.025, 0, 0, sash); box(0.05, h, 0.05, sashMat, w - 0.025, 0, 0, sash);
-            box(w - 0.1, h - 0.1, 0.02, glass, w / 2, 0, 0, sash);
-            hinge.visible = false;
-            parts.window = { hinge, open: 0, target: 0 };
+            const glass = new THREE.MeshStandardMaterial({ color: 0xbfe3ff, transparent: true, opacity: 0.3, roughness: 0.1, depthWrite: false });
+            const leaf = (hx, dir) => {            // dir = +1 : battant qui s'étend vers +x depuis sa charnière
+                const hinge = new THREE.Group(); hinge.position.set(hx, cy, z); g.add(hinge);
+                box(w, 0.06, 0.06, sashMat, dir * w / 2, h / 2 - 0.03, 0, hinge); box(w, 0.06, 0.06, sashMat, dir * w / 2, -h / 2 + 0.03, 0, hinge);
+                box(0.06, h, 0.06, sashMat, dir * 0.03, 0, 0, hinge); box(0.06, h, 0.06, sashMat, dir * (w - 0.03), 0, 0, hinge);
+                const gl = box(w - 0.12, h - 0.12, 0.02, glass, dir * w / 2, 0, 0, hinge); gl.renderOrder = 3;
+                box(0.03, 0.14, 0.05, mat(0x94a3b8, { metalness: 0.6, roughness: 0.3 }), dir * (w - 0.08), 0, 0.05, hinge);   // poignée
+                return hinge;
+            };
+            const left = leaf(W.x0, 1), right = leaf(W.x1, -1);
+            if (!topRow) {                          // paroi vitrée : châssis dormant pour matérialiser la fenêtre
+                const zf = -3 + 0.01;
+                box(2 * w + 0.12, 0.07, 0.08, sashMat, (W.x0 + W.x1) / 2, W.top + 0.035, zf, g); box(2 * w + 0.12, 0.07, 0.08, sashMat, (W.x0 + W.x1) / 2, W.sill - 0.035, zf, g);
+                box(0.07, h, 0.08, sashMat, W.x0 - 0.035, cy, zf, g); box(0.07, h, 0.08, sashMat, W.x1 + 0.035, cy, zf, g);
+            }
+            // courant d'air : filets clairs qui entrent dans la chambre quand la fenêtre est ouverte
+            const airMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe, transparent: true, opacity: 0, depthWrite: false });
+            const air = []; for (let i = 0; i < 6; i++) air.push(box(0.5, 0.015, 0.015, airMat, W.x0 + 0.25 + (i % 3) * 0.5, W.sill + 0.25 + (i % 2) * 0.55 + i * 0.07, -2.9, g));
+            parts.window = { left, right, air, airMat, pane: g.userData.windowPane || null, open: 0, target: 0 };
         }
         // Radiateur sous la fenêtre (ou contre le mur du fond)
         const radMat = mat(0xe5e7eb, { emissive: 0x000000, emissiveIntensity: 0 });
@@ -89,7 +101,7 @@ const Equipment = (() => {
 
     function setState(room, eq) {
         const p = get(room); if (!p || !eq) return;
-        if (p.window) { p.window.target = eq.window === 'open' ? 1 : 0; if (p.window.target) p.window.hinge.visible = true; }
+        if (p.window) p.window.target = eq.window === 'open' ? 1 : 0;
         p.heater.on = eq.heater === 'on';
         p.ac.on = eq.ac === 'on'; p.ac.led.visible = p.ac.on;
         p.light.on = eq.light === 'on';
@@ -118,8 +130,10 @@ const Equipment = (() => {
             p.t += delta;
             if (p.window) {
                 const w = p.window; w.open += (w.target - w.open) * k;
-                w.hinge.rotation.y = -w.open * 0.95;
-                if (w.target === 0 && w.open < 0.02) w.hinge.visible = false;
+                w.left.rotation.y = -w.open * 1.25; w.right.rotation.y = w.open * 1.25;      // vers l'intérieur de la chambre
+                if (w.pane) w.pane.visible = w.open < 0.03;                                  // baie réellement ouverte
+                w.airMat.opacity = w.open * 0.55;
+                w.air.forEach((a, i) => { const u = (p.t * 0.45 + i * 0.17) % 1; a.position.z = -2.9 + u * 1.1; a.rotation.y = Math.sin(p.t * 2 + i) * 0.25; });
             }
             const h = p.heater; h.glow += ((h.on ? 1 : 0) - h.glow) * k;
             h.mat.emissive.setHex(0xff3b1f); h.mat.emissiveIntensity = h.glow * (0.55 + 0.15 * Math.sin(p.t * 3));
@@ -131,7 +145,8 @@ const Equipment = (() => {
         });
     }
 
-    return { setState, setIV, setMonitor, update, get };
+    function windowOpen(room) { const p = rooms[room]; return p && p.window ? p.window.open : null; }
+    return { setState, setIV, setMonitor, update, get, windowOpen };
 })();
 
 window.StaffAvatars = StaffAvatars; window.Equipment = Equipment;

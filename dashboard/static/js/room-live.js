@@ -22,7 +22,7 @@ const RoomLive = (() => {
             AvatarManager.setExpression(pid, rs.expression);
             AvatarManager.setSkinTemp(pid, rs.skinTempC);
         }
-        StaffAvatars.setPresent(rs.room, !!rs.staffPresent || (rs.persons || 0) > 1, rs.persons);
+        StaffAvatars.setPresent(rs.room, !!rs.staffPresent || (rs.persons || 0) > 1, rs.persons, rs.staffRole);
         Equipment.setState(rs.room, rs.equipment);
         const v = rs.vitals || {};
         Equipment.setIV(rs.room, v.ivVolumeLeftMl, (rs.devices && rs.devices[rs.room + '-iv_pump'] || {}).metrics?.rateMlH, v.ivOcclusion);

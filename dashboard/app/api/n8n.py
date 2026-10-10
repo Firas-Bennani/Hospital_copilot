@@ -161,6 +161,19 @@ async def acknowledge(risk_id: int, session: Session = Depends(get_session), use
             with session_scope() as s2:
                 s2.get(Risk, risk_id).n8n_resume_url = None
     payload["n8n_resumed"] = n8n_ok
+    # simulation : un soignant virtuel intervient (scénario de résolution du type de risque) ; en vision réelle, rien n'est simulé
+    from .. import resolutions
+    from ..agents import manager as agent_manager
+
+    res = resolutions.start_for(room, r.type, by_role=user.role)
+    payload["resolution"] = res
+    agent = agent_manager.get("FollowUpAgent")
+    if agent is not None:
+        await agent.log(room, input=f"« Je prends en charge » sur le risque #{risk_id} ({r.type}) par {user.username}",
+                        reasoning=(f"Chambre simulée : intervention « {res['scenario']} » lancée — {res['role_label']} dans la chambre pendant ~{res['duration']:.0f} s. {res['description']}" if res
+                                   else "Chambre en vision réelle (ou simulateur arrêté) : aucune intervention simulée, c'est la présence détectée d'un soignant qui compte.")
+                                  + " La sortie du soignant déclenchera la revérification déterministe.",
+                        output=f"risque #{risk_id} en cours" + (f" — {res['role_label']} en route" if res else ""), risk_id=risk_id)
     return payload
 
 

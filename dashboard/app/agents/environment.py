@@ -28,6 +28,7 @@ class EnvironmentAgent(Agent):
         self.last_action: dict[str, float] = {}
         self.manual_until: dict[str, float] = {}
         self.local_refusal: dict[str, float] = {}
+        self.pending_manual: dict[tuple[str, str], tuple[str, str, str]] = {}
 
     async def handle(self, ev: Event) -> None:
         if ev.topic == "internal/reset":
@@ -37,9 +38,15 @@ class EnvironmentAgent(Agent):
         room, kind, d = p["room"], p["kind"], p["data"]
         if kind == "cmd":
             if d.get("requestedBy") and d["requestedBy"] != self.name and d.get("source") == "server":
-                self.manual_until[room] = time.time() + MANUAL_HOLD_S  # un humain a la main
+                self.manual_until[room] = time.time() + MANUAL_HOLD_S  # un humain (ou n8n) a la main
+                self.pending_manual[(room, p.get("groups", {}).get("equipment") or "")] = (d["requestedBy"], d.get("action"), d.get("reason") or "")
             return
         if kind == "cmd_ack":
+            who = self.pending_manual.pop((room, d.get("equipment") or ""), None)
+            if who:
+                await self.log(room, input=f"commande de {who[0]} : {d.get('equipment')} → {who[1]} ({who[2] or 'sans motif'})",
+                               reasoning="Commande d'équipement demandée hors EnvironmentAgent : exécutée telle quelle, l'agent s'abstient pendant 10 min. Mesure de confort : elle n'agit sur aucun risque clinique.",
+                               output=f"{d.get('equipment')} = {d.get('state')}" if d.get("ok") else f"refusée : {d.get('error') or 'sans accusé'}", status="ok" if d.get("ok") else "error")
             if not d.get("ok") and d.get("error"):
                 self.local_refusal[room] = time.time()
                 await self.log(room, input=f"ack {d.get('equipment')}/{d.get('action')} refusé : {d.get('error')}", reasoning="Une règle locale de l'edge a priorité : on n'insiste pas pendant 5 min.", output="commande abandonnée")

@@ -39,7 +39,22 @@ def _on_scenario_event(kind: str, data: dict[str, Any]) -> None:
         current_scenario.update(name=data["name"], room=data.get("room"), started_at=handler._now_iso())
     elif kind in ("scenario_finished", "scenario_stopped"):
         current_scenario.update(name=None, room=None, started_at=None)
+    elif kind == "resolution_step" and (data.get("params") or {}).get("hook"):
+        _run_hook(data["params"]["hook"], str(data.get("room")))
     manager.broadcast_nowait({"type": "scenario", "event": kind, **data})
+
+
+def _run_hook(hook: str, room: str) -> None:
+    """Effets côté serveur d'une étape de résolution (ce que le simulateur ne peut pas faire seul)."""
+    from .. import state
+
+    if hook == "behavior_recover":
+        pid = state.patient_for_room(room)
+        if pid:
+            try:
+                asyncio.get_running_loop().create_task(state.process_event(pid, "recover", source="simulation", confidence=1.0))
+            except RuntimeError:  # hors boucle asyncio (moteur piloté à la main par un test)
+                pass
 
 
 async def start() -> list[asyncio.Task]:

@@ -43,6 +43,9 @@ class VitalsAgent(Agent):
         self.streak: dict[tuple[str, str], int] = {}
         self.limits_cache: dict[str, tuple[float, dict[str, float]]] = {}
         self.last_news2: dict[str, int] = {}
+        from ..config import settings
+
+        self.tick_interval = settings.vitals_tick_s
 
     def limits(self, room: str) -> dict[str, float]:
         cached = self.limits_cache.get(room)

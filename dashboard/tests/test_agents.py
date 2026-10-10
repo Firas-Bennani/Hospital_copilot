@@ -138,15 +138,16 @@ def test_vitals_thresholds_and_auto_clear(client):
     assert risks and risks[0]["severity"] == "high" and risks[0]["source_agent"] == "VitalsAgent"
     rid = risks[0]["id"]
     client.post("/api/ingest", json=msg("hackcure/room/101/device/101-ecg", type="ecg", metrics={"hr": 76, "rhythm": "sinus"}))
-    r = wait_for(lambda: (lambda d: d if d["status"] == "resolved" else None)(client.get(f"/api/risks/{rid}").json()))
-    assert r and "auto" in r["resolved_by"]
+    # V2 : un risque clinique ne se lève plus seul — la normalisation est notée, le risque attend un soignant
+    r = wait_for(lambda: (lambda d: d if "à confirmer par un soignant" in d["notes"] else None)(client.get(f"/api/risks/{rid}").json()))
+    assert r and r["status"] == "open"
     # équipement : perfusion presque vide → medium
     for _ in range(3):
         client.post("/api/ingest", json=msg("hackcure/room/103/device/103-iv_pump", type="iv_pump", metrics={"rateMlH": 80, "volumeLeftMl": 30, "occlusion": False}))
     risks = wait_for(lambda: open_risks(client, "103", "iv_empty"))
     assert risks and risks[0]["severity"] == "medium"
     client.post("/api/ingest", json=msg("hackcure/room/103/device/103-iv_pump", type="iv_pump", metrics={"rateMlH": 80, "volumeLeftMl": 480, "occlusion": False}))
-    wait_for(lambda: not open_risks(client, "103", "iv_empty"))
+    assert wait_for(lambda: [r for r in open_risks(client, "103", "iv_empty") if "à confirmer" in r["notes"]])
 
 
 def test_environment_agent_sends_commands(client):

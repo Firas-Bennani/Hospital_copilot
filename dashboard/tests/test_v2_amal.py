@@ -19,11 +19,11 @@ def test_behavioral_risk_updates_risk_without_forcing_fall(client):
     assert client.get("/api/rooms/states").json()["103"]["behavior"]["risk_level"] == "high"
     risks = wait_for(lambda: open_risks(client, "103", "behavioral_risk"))
     assert risks and risks[0]["severity"] == "high" and risks[0]["source_agent"] == "VisionAgent"
-    # recover réinitialise les champs et lève le risque non pris en charge
+    # recover réinitialise les champs ; le risque, lui, attend un soignant (V2 : pas de levée automatique d'un risque clinique)
     trigger(client, event_type="recover")
     p = client.get("/api/patients").json()["patient_03"]
     assert p["risk_level"] == "none" and p["risk_score"] == 0.0 and p["behavior_indicators"] == [] and p["recommendations"] == []
-    assert wait_for(lambda: not open_risks(client, "103", "behavioral_risk"))
+    assert wait_for(lambda: [r for r in open_risks(client, "103", "behavioral_risk") if "à confirmer par un soignant" in r["notes"]])
 
 
 def test_fall_and_pain_set_risk_fields(client):

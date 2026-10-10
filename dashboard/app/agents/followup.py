@@ -57,7 +57,7 @@ def verify_risk(rtype: str, rs: dict[str, Any]) -> tuple[bool, str]:
     if rtype == "hypoxemia":
         return (v.get("spo2") or 100) >= 92, f"SpO2 {v.get('spo2')}"
     if rtype == "hypotension":
-        return (v.get("sys") or 120) >= 100, f"PAS {v.get('sys')}"
+        return (v.get("sys") or 120) >= 95, f"PAS {v.get('sys')}"  # même seuil que la détection (VitalsAgent)
     if rtype == "hypertension":
         return (v.get("sys") or 120) < 180, f"PAS {v.get('sys')}"
     if rtype == "tachypnea":

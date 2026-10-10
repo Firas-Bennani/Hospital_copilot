@@ -73,6 +73,7 @@ def default_room_state(room: str) -> dict[str, Any]:
         "behavior": {"risk_level": "none", "risk_score": 0.0, "indicators": [], "recommendations": []},
         "openRisks": 0,
         "staffPresent": False,
+        "staffRole": None,
         "source": "none",
         "visionSource": "none",
         "lastVisionTs": None,
@@ -207,6 +208,7 @@ async def _on_vision_state(room: str, p: dict[str, Any], source: str) -> None:
 async def _on_vision_staff(room: str, p: dict[str, Any]) -> None:
     rs = room_state(room)
     rs["staffPresent"] = p["event"] == "staff_enter"
+    rs["staffRole"] = (p.get("role") or "nurse") if rs["staffPresent"] else None
     rs["persons"] = int(p["persons"])
     rs["lastStaffEvent"] = {"event": p["event"], "durationSec": p.get("durationSec"), "ts": p["ts"]}
     rs["ts"] = p["ts"]

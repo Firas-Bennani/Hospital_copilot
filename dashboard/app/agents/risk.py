@@ -27,8 +27,9 @@ from .plans import FALLBACK_PLANS, TYPE_LABELS, severity_for
 
 SEV_LABEL = {"low": "FAIBLE", "medium": "MOYEN", "high": "ÉLEVÉ", "critical": "CRITIQUE"}
 NOTIF_LEVEL = {"low": "info", "medium": "warning", "high": "warning", "critical": "critical"}
-AUTO_CLEARABLE = {"tachycardia", "bradycardia", "hypoxemia", "hypotension", "hypertension", "fever", "iv_empty", "iv_occlusion", "transfusion_reaction", "news2_high", "pain",
-                  "unaccompanied_bed_exit", "bed_exit", "toilet_too_long", "patient_out_of_room", "thermal_discomfort", "behavioral_risk"}
+# V2 : seul un risque d'AMBIANCE se lève seul. Un risque clinique n'est résolu que par la boucle soignant
+# (prise en charge → intervention → sortie → revérification déterministe par FollowUpAgent / n8n risk-verify).
+AUTO_CLEARABLE = {"thermal_discomfort", "room_overheat"}
 
 
 class RiskAgent(Agent):
@@ -78,15 +79,20 @@ class RiskAgent(Agent):
                         bumped = True
                     existing.notes = (existing.notes + "\n" if existing.notes else "") + f"{datetime.now(timezone.utc).strftime('%H:%M:%S')} signal répété par {c.get('source_agent')} : {json.dumps(details, ensure_ascii=False)[:200]}"
                     s.flush()
-                    rid = existing.id
-                    payload = risk_dict(s, existing)
-                    await self.log(room, input=f"candidat {rtype} ({c.get('source_agent')}) : {json.dumps(details, ensure_ascii=False)[:300]}",
-                                   reasoning=f"Un risque « {TYPE_LABELS.get(rtype, rtype)} » est déjà {existing.status} (#{rid}) : dédupliqué" + (", sévérité relevée" if bumped else "") + ".",
-                                   output=f"risque #{rid} mis à jour (pas de doublon)", risk_id=rid, duration_ms=sw.ms)
-                    await manager.broadcast({"type": "risk", "event": "updated", "risk": payload})
                     if bumped:
                         refresh_room_level(s, room)
-                    return
+                    dup = (existing.id, existing.status, bumped, risk_dict(s, existing))
+                else:
+                    dup = None
+            # hors de la session : ne jamais garder une transaction d'écriture ouverte pendant un await (SQLite se verrouille)
+            if dup is not None:
+                rid, status, bumped, payload = dup
+                await self.log(room, input=f"candidat {rtype} ({c.get('source_agent')}) : {json.dumps(details, ensure_ascii=False)[:300]}",
+                               reasoning=f"Un risque « {TYPE_LABELS.get(rtype, rtype)} » est déjà {status} (#{rid}) : dédupliqué" + (", sévérité relevée" if bumped else "") + ".",
+                               output=f"risque #{rid} mis à jour (pas de doublon)", risk_id=rid, duration_ms=sw.ms)
+                await manager.broadcast({"type": "risk", "event": "updated", "risk": payload})
+                return
+            with session_scope() as s:
                 recent = recent_resolved_same(s, room, rtype, minutes=1)
                 risk = Risk(
                     admission_id=ctx.get("admission_id"), room_code=room, type=rtype, title=title, severity=severity, status="open",
@@ -202,11 +208,18 @@ class RiskAgent(Agent):
         room, types, reason = c["room"], c.get("types") or [], c.get("reason", "")
         changed = []
         with session_scope() as s:
+            noted = []
             for rtype in types:
-                if rtype not in AUTO_CLEARABLE:
-                    continue
                 risk = s.exec(select(Risk).where(Risk.room_code == room, Risk.type == rtype, Risk.status == "open")).first()
-                if not risk or risk.severity == "critical":
+                if not risk:
+                    continue
+                if rtype not in AUTO_CLEARABLE:
+                    # risque clinique : on trace la normalisation du signal, le risque reste ouvert jusqu'à validation par un soignant
+                    stamp = datetime.now(timezone.utc).strftime("%H:%M:%S")
+                    if "signal revenu dans les limites" not in (risk.notes or "")[-160:]:
+                        risk.notes = (risk.notes + "\n" if risk.notes else "") + f"{stamp} signal revenu dans les limites ({reason}) — à confirmer par un soignant"
+                        s.flush()
+                        noted.append(risk_dict(s, risk))
                     continue
                 risk.status = "resolved"
                 risk.resolved_at = datetime.now(timezone.utc)
@@ -216,10 +229,14 @@ class RiskAgent(Agent):
                 changed.append(risk_dict(s, risk))
             if changed:
                 refresh_room_level(s, room)
+        for payload in noted:
+            await manager.broadcast({"type": "risk", "event": "updated", "risk": payload})
+            await self.log(room, input=f"signal normalisé : {payload['type']} — {reason}", reasoning="Risque clinique : la normalisation d'un signal ne suffit pas. Le risque reste ouvert jusqu'à la prise en charge par un soignant et la revérification.",
+                           output=f"risque #{payload['id']} maintenu (note ajoutée)", risk_id=payload["id"])
         for payload in changed:
             await manager.broadcast({"type": "risk", "event": "resolved", "risk": payload})
         if changed:
             from .. import n8n
 
             n8n.release_soon([p["id"] for p in changed], "signal normalisé (levée automatique)")
-            await self.log(room, input=f"levée : {payload['type']} — {reason}", reasoning="Le signal est revenu dans les limites avant toute prise en charge : risque ouvert clôturé automatiquement (jamais pour un risque critique ou déjà pris en charge).", output=f"risque #{payload['id']} résolu", risk_id=payload["id"])
+            await self.log(room, input=f"levée : {payload['type']} — {reason}", reasoning="Risque d'ambiance (non clinique) revenu dans les limites : clôturé automatiquement.", output=f"risque #{payload['id']} résolu", risk_id=payload["id"])
