@@ -42,7 +42,7 @@ class RoomTrack:
 class VisionAgent(Agent):
     name = "VisionAgent"
     description = "Lisse les états de la caméra, suit la posture et les transitions (sommeil, lever, toilettes, chute, appel) et note l'humeur."
-    patterns = ["hackcure/room/+/vision/#", "hackcure/room/+/call", "hackcure/room/+/safety/alarm", "internal/reset"]
+    patterns = ["hackcure/room/+/vision/#", "hackcure/room/+/call", "hackcure/room/+/safety/alarm", "internal/behavior", "internal/reset"]
     tick_interval = 10.0
 
     def __init__(self) -> None:
@@ -67,6 +67,9 @@ class VisionAgent(Agent):
             self.rooms.clear()
             return
         p = ev.payload
+        if ev.topic == "internal/behavior":
+            await self.on_behavior(p)
+            return
         room, kind, d = p["room"], p["kind"], p["data"]
         if kind == "vision_state":
             await self.on_state(room, d)
@@ -90,6 +93,19 @@ class VisionAgent(Agent):
                     await self.candidate(room, "call", {"source": "edge-alarm"}, min_interval=30)
                 else:
                     await self.candidate(room, "local_alarm", {"reason": reason, "localActionTaken": d.get("localActionTaken", [])}, min_interval=30)
+
+    async def on_behavior(self, p: dict[str, Any]) -> None:
+        """Risque comportemental du pipeline IA (`behavioral_risk`) : transmis au RiskAgent à partir de « moderate »."""
+        room, level = p["room"], p.get("risk_level", "none")
+        if p.get("event_type") == "recover" or level in ("none", "low"):
+            await bus.publish("internal/risk_clear", {"room": room, "types": ["behavioral_risk"], "reason": "comportement revenu à la normale"})
+            return
+        indicators = p.get("indicators") or []
+        async with self.working("acting"):
+            await self.log(room, input=f"risque comportemental {level} (score {float(p.get('risk_score') or 0):.2f}) : {', '.join(indicators) or 'sans indicateur'}",
+                           reasoning="Signal du pipeline vision (comportement) sans chute ni douleur avérée : transmis au RiskAgent, qui fixe la sévérité.",
+                           output="risque candidat « Comportement à risque »")
+            await self.candidate(room, "behavioral_risk", {"risk_level": level, "risk_score": p.get("risk_score"), "indicators": indicators, "recommendations": p.get("recommendations") or []}, min_interval=30)
 
     async def on_state(self, room: str, d: dict[str, Any]) -> None:
         t = self.track(room)

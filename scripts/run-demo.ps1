@@ -1,4 +1,4 @@
-# Lance la démo Hospital Copilot (Windows PowerShell) : serveur + simulateur embarqué + agents, sans Pi, sans broker, sans clé LLM.
+﻿# Lance la démo Hospital Copilot (Windows PowerShell) : serveur + simulateur embarqué + agents, sans Pi, sans broker, sans clé LLM.
 #   Set-ExecutionPolicy -Scope Process Bypass ; .\scripts\run-demo.ps1 [-Port 8000] [-Edge] [-Reset]
 param(
     [int]$Port = 8000,

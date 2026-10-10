@@ -70,6 +70,7 @@ def default_room_state(room: str) -> dict[str, Any]:
         "vitals": {},
         "devices": {},
         "riskLevel": "none",
+        "behavior": {"risk_level": "none", "risk_score": 0.0, "indicators": [], "recommendations": []},
         "openRisks": 0,
         "staffPresent": False,
         "source": "none",

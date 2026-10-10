@@ -73,6 +73,9 @@ def verify_risk(rtype: str, rs: dict[str, Any]) -> tuple[bool, str]:
     if rtype == "transfusion_reaction":
         dev = (rs.get("devices") or {}).get(f"{rs.get('room')}-transfusion") or {}
         return not (dev.get("metrics") or {}).get("reaction"), "réaction " + ("présente" if (dev.get("metrics") or {}).get("reaction") else "absente")
+    if rtype == "behavioral_risk":
+        lvl = (rs.get("behavior") or {}).get("risk_level", "none")
+        return lvl in ("none", "low"), f"risque comportemental {lvl}"
     if rtype == "thermal_discomfort":
         t = (rs.get("env") or {}).get("tempC")
         return t is None or 19 <= t <= 27, f"ambiance {t} °C"

@@ -28,7 +28,7 @@ from .plans import FALLBACK_PLANS, TYPE_LABELS, severity_for
 SEV_LABEL = {"low": "FAIBLE", "medium": "MOYEN", "high": "ÉLEVÉ", "critical": "CRITIQUE"}
 NOTIF_LEVEL = {"low": "info", "medium": "warning", "high": "warning", "critical": "critical"}
 AUTO_CLEARABLE = {"tachycardia", "bradycardia", "hypoxemia", "hypotension", "hypertension", "fever", "iv_empty", "iv_occlusion", "transfusion_reaction", "news2_high", "pain",
-                  "unaccompanied_bed_exit", "bed_exit", "toilet_too_long", "patient_out_of_room", "thermal_discomfort"}
+                  "unaccompanied_bed_exit", "bed_exit", "toilet_too_long", "patient_out_of_room", "thermal_discomfort", "behavioral_risk"}
 
 
 class RiskAgent(Agent):

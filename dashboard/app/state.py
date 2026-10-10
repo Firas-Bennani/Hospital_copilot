@@ -38,6 +38,11 @@ def _fresh_patient(base: dict[str, Any]) -> dict[str, Any]:
         "last_event_time": None,
         "alert_priority": "none",
         "source": "system",
+        # champs IA du pipeline comportemental (Amal a4fa849)
+        "risk_level": "none",
+        "risk_score": 0.0,
+        "behavior_indicators": [],
+        "recommendations": [],
     }
 
 
@@ -102,27 +107,39 @@ async def process_event(
     event_type: str,
     source: str = "demo",
     confidence: float = 0.90,
+    risk_level: str = "none",
+    risk_score: float = 0.0,
+    behavior_indicators: list | None = None,
+    recommendations: list | None = None,
 ) -> dict[str, Any] | None:
-    """Met à jour l'état d'un patient et diffuse `patient_event` (comportement d'origine)."""
+    """Met à jour l'état d'un patient et diffuse `patient_event` (comportement d'origine + champs de risque comportemental)."""
     if patient_id not in patients:
         logger.warning("Unknown patient: %s", patient_id)
         return None
 
     patient = patients[patient_id]
     now = now_iso()
+    behavior_indicators = list(behavior_indicators or [])
+    recommendations = list(recommendations or [])
 
     if event_type == "fall":
         patient["fall_detected"], patient["pain_detected"] = True, False
         patient["state"], patient["alert_priority"] = "fall_detected", "critical"
+        risk_level, risk_score = "critical", max(risk_score, 0.95)
     elif event_type == "pain":
         patient["fall_detected"], patient["pain_detected"] = False, True
         patient["state"], patient["alert_priority"] = "pain_detected", "high"
+        risk_level = "high" if risk_level == "none" else risk_level
     elif event_type == "fall_and_pain":
         patient["fall_detected"], patient["pain_detected"] = True, True
         patient["state"], patient["alert_priority"] = "fall_and_pain", "critical"
+        risk_level, risk_score = "critical", max(risk_score, 0.95)
+    elif event_type == "behavioral_risk":
+        pass  # met à jour le risque sans forcer chute ni douleur
     elif event_type == "recover":
         patient["fall_detected"], patient["pain_detected"] = False, False
         patient["state"], patient["alert_priority"] = "normal", "none"
+        risk_level, risk_score, behavior_indicators, recommendations = "none", 0.0, [], []
     else:
         logger.warning("Unknown event type: %s", event_type)
         return None
@@ -130,6 +147,10 @@ async def process_event(
     patient["confidence"] = confidence
     patient["last_event_time"] = now
     patient["source"] = source
+    patient["risk_level"] = risk_level
+    patient["risk_score"] = risk_score
+    patient["behavior_indicators"] = behavior_indicators
+    patient["recommendations"] = recommendations
 
     event = {
         "type": "patient_event",
@@ -141,6 +162,10 @@ async def process_event(
         "state": patient["state"],
         "confidence": confidence,
         "alert_priority": patient["alert_priority"],
+        "risk_level": risk_level,
+        "risk_score": risk_score,
+        "behavior_indicators": behavior_indicators,
+        "recommendations": recommendations,
         "timestamp": now,
         "room": patient.get("room"),
     }
@@ -151,7 +176,18 @@ async def process_event(
 
     await manager.broadcast(event)
     await bus.publish(f"internal/patient_event/{patient_id}", event)
-    logger.info("[%s] %s: %s (conf=%.2f)", source.upper(), patient_id, event_type, confidence)
+    # propagation vers room_state (3D, n8n) et vers le VisionAgent → RiskAgent
+    room = patient.get("room")
+    if room:
+        behavior = {"risk_level": risk_level, "risk_score": risk_score, "indicators": behavior_indicators, "recommendations": recommendations, "source": source, "ts": now}
+        rs = room_states.get(str(room))
+        if rs is not None:
+            rs["behavior"] = behavior
+        if event_type == "behavioral_risk":  # les autres événements gardent exactement les messages d'origine
+            await manager.broadcast({"type": "behavior", "room": str(room), "patient_id": patient_id, **behavior})
+        if event_type in ("behavioral_risk", "recover"):
+            await bus.publish("internal/behavior", {"room": str(room), "patient_id": patient_id, "event_type": event_type, **behavior})
+    logger.info("[%s] %s: %s (conf=%.2f, risk=%s)", source.upper(), patient_id, event_type, confidence, risk_level)
     return event
 
 

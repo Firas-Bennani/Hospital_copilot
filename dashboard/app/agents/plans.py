@@ -27,6 +27,7 @@ TYPE_LABELS: dict[str, str] = {
     "transfusion_reaction": "Réaction transfusionnelle",
     "thermal_discomfort": "Inconfort thermique",
     "local_alarm": "Alarme locale (edge)",
+    "behavioral_risk": "Comportement à risque (vision)",
 }
 
 # Sévérité déterministe : fonction(détails) -> low|medium|high|critical
@@ -35,6 +36,8 @@ def severity_for(rtype: str, details: dict[str, Any], patient: dict[str, Any] | 
     high_fall_risk = patient.get("fall_risk") == "high"
     if rtype in ("fall", "transfusion_reaction"):
         return "critical"
+    if rtype == "behavioral_risk":
+        return {"critical": "critical", "high": "high"}.get(str(details.get("risk_level")), "medium")
     if rtype == "news2_high":
         s = int(details.get("news2", 0))
         return "critical" if s >= 7 else ("high" if s >= 5 else "medium")

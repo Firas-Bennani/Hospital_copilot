@@ -110,6 +110,15 @@
                     </button>
                 </div>
             </div>
+
+            <!-- Capteurs d'environnement (panneau d'Amal, branché sur room_state.env) -->
+            <div id="sensor-panel" class="demo-panel">
+                <h3>
+                    <span class="demo-badge sensor-badge">CAPTEURS</span>
+                    Environnement
+                </h3>
+                <div id="sensor-rows"><div class="muted small">En attente des capteurs…</div></div>
+            </div>
         </aside>
 
         <!-- Centre : viewport 3D (+ vues HTML par-dessus) -->
@@ -223,6 +232,7 @@
     <script src="/static/js/equipment.js"></script>
     <script src="/static/js/room-live.js"></script>
     <script src="/static/js/kpi-bar.js"></script>
+    <script src="/static/js/sensor-panel.js"></script>
     <script src="/static/js/n8n-status.js"></script>
     <script src="/static/js/agents-panel.js"></script>
     <script src="/static/js/notifications.js"></script>
@@ -241,5 +251,7 @@
     <script src="/static/js/views/users.js"></script>
     <!-- Bootstrap WebSocket (existant) -->
     <script src="/static/js/app.js"></script>
+    <!-- Étage 1, salles spécialisées, visite à pied (Amal) — initialisé par scene.js -->
+    <script src="/static/js/floors.js"></script>
 </body>
 </html>

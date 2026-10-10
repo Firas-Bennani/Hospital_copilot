@@ -239,3 +239,13 @@ body.view-open #kpi-bar { display: none; }
     #view-overlay { position: static; background: #fff; color: #000; }
     body { overflow: visible; background: #fff; color: #000; }
 }
+
+/* ─── Capteurs d'environnement + cohabitation avec floors.js ─── */
+#sensor-panel { margin-top: 10px; border-color: #64748b; }
+.sensor-badge { background: #475569 !important; }
+.sensor-row { display: grid; grid-template-columns: 34px 1fr 1fr auto; gap: 6px; align-items: center; padding: 4px 6px; margin-top: 4px; font-size: 12px; background: rgba(15,23,42,.5); border-radius: 4px; border-left: 3px solid #64748b; color: var(--text-secondary); }
+.sensor-row.ok { border-left-color: #22c55e; } .sensor-row.hot { border-left-color: #ef4444; } .sensor-row.cold { border-left-color: #3b82f6; }
+.sensor-room { font-weight: 700; color: var(--text-primary); }
+#viewport-container #hf-panel { bottom: 104px; }            /* au-dessus du bandeau KPI */
+body.view-open #hf-panel, body.view-open #hf-hud { display: none !important; }
+body:has(#hf-panel.hf-walking) #kpi-bar { display: none; }   /* visite à pied : le HUD occupe le bas de l'écran */
