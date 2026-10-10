@@ -114,6 +114,7 @@ def create_app() -> FastAPI:
         "notifications",
         "scenario",
         "users",
+        "kpi",
         "print",
     ):
         mod = _import_optional(f".api.{name}")

@@ -354,3 +354,47 @@ Autorisations appliquées **côté serveur** (dépendances FastAPI par permissio
 
 ## 13. Qualité
 Tests : non-régression dashboard, NEWS2, anomalies, déduplication, machine à états FollowUp, permissions, schémas des contrats, posture_map, zones/hystérésis, comptage de personnes, **tests existants de `computer_vision/`**. Logs structurés, `/health`. Un agent ne s'arrête jamais sur une exception (try/except + log + redémarrage). Commentaires uniquement là où ce n'est pas évident.
+
+---
+
+# ADDENDUM — MODE RÉEL + WORKFLOWS n8n (PRIORITAIRE sur les replis « Mock » ci-dessus)
+
+L'équipe veut une IA **réellement fonctionnelle**, pas une démo simulée.
+
+## 1. LLM réel par défaut
+- `.env` contient `LLM_PROVIDER=anthropic` et `ANTHROPIC_API_KEY` (fichier `.env` jamais commité ; mets à jour `.env.example` sans valeur).
+- Le backend appelle **vraiment** l'API Anthropic (SDK `anthropic`, modèle `LLM_MODEL`, défaut `claude-sonnet-5-5`) pour : explication du risque, plan d'action, revérification, rapport de garde, brouillon de rapport médecin.
+- `MockLlm` n'est **plus le mode par défaut**. Il reste seulement comme **filet de sécurité automatique** si l'appel échoue (timeout 20 s, erreur réseau, clé invalide). Dans ce cas, l'interface et l'AgentLog affichent clairement « réponse de secours (LLM indisponible) ». Les tests automatisés utilisent le Mock pour ne pas consommer d'API.
+- Au démarrage, `/health` vérifie la clé avec un appel minimal et affiche `llm: ok|error`.
+
+## 2. n8n : couche d'orchestration des actions
+**Principe** : la plateforme **détecte** (règles déterministes, NEWS2, chute = critical, alarme locale du Pi). n8n **orchestre la réponse**. Si n8n est arrêté, la plateforme continue en local avec ses propres agents Python (repli), et le signale dans l'interface.
+
+### Installation (documente-la dans `n8n/README.md`)
+- Lancement local : `npx n8n` (ou Docker `n8nio/n8n` si disponible), interface sur http://localhost:5678.
+- Variables backend : `N8N_ENABLED=true`, `N8N_BASE_URL=http://localhost:5678`, `N8N_WEBHOOK_SECRET` (en-tête `X-Hospital-Secret` vérifié des deux côtés), `PLATFORM_URL=http://localhost:8000`, `PLATFORM_SERVICE_TOKEN` (jeton de service pour que n8n appelle l'API de la plateforme avec le rôle `owner`).
+- Exporte chaque workflow en JSON dans `n8n/workflows/` et fournis `n8n/import.ps1` / `import.sh` (`npx n8n import:workflow --separate --input=n8n/workflows`). Les secrets restent dans les **credentials n8n**, jamais dans les JSON exportés.
+- Appels LLM dans n8n : nœud **HTTP Request** vers `https://api.anthropic.com/v1/messages` (en-têtes `x-api-key`, `anthropic-version: 2023-06-01`, `content-type: application/json`), credential « Header Auth ». Réponses demandées en JSON strict, validées par un nœud Code.
+
+### Événements envoyés par la plateforme vers n8n
+`POST {N8N_BASE_URL}/webhook/<nom>` avec `X-Hospital-Secret`, payload JSON complet (risque, patient : âge, allergies, traitements, risque de chute ; dernières constantes ; état vision ; personnel en service). Envoi asynchrone avec 3 tentatives ; échec ⇒ repli sur les agents Python locaux.
+
+### Les 4 workflows à créer
+1. **`risk-triage`** (webhook `risk-created`)
+   Webhook → Code (construction du prompt) → HTTP Anthropic (explication + plan d'action 3–6 étapes, en citant les valeurs, en respectant allergies/traitements) → Code (validation JSON) → `POST {PLATFORM_URL}/api/risks/{id}/plan` → Telegram à l'infirmier (sévérité, chambre, résumé, lien vers la plateforme) → **Wait** (reprise par webhook `risk-ack`, délai : critical 2 min, high 10 min, medium 30 min) → si pas d'acquittement : Telegram au médecin de garde + `POST /api/risks/{id}/escalate`.
+2. **`risk-verify`** (webhook `staff-left`)
+   Webhook (le personnel est sorti de la chambre) → Wait 2 min → `GET /api/rooms/{room}/state` + constantes → HTTP Anthropic (le risque est-il résolu ? justification) → `POST /api/risks/{id}/resolve` ou `/persistent` → Telegram de confirmation ou d'alerte.
+3. **`shift-report`** (Cron 07:45 et 19:45 + webhook `shift-report` pour le bouton de la plateforme)
+   `GET /api/events?since=` + risques + humeurs → HTTP Anthropic (rapport de garde structuré par chambre) → `POST /api/shift-reports` → Telegram avec le lien d'impression.
+4. **`pharmacy-alerts`** (Cron quotidien + webhook)
+   `GET /api/pharmacy/alerts` (stock sous le seuil, péremption < 30 j) → Telegram au pharmacien.
+
+### Côté plateforme
+- Endpoints nécessaires (protégés par `PLATFORM_SERVICE_TOKEN`) : `POST /api/risks/{id}/plan`, `/escalate`, `/resolve`, `/persistent`, `POST /api/shift-reports`, `GET /api/rooms/{room}/state`, `GET /api/events`, `GET /api/pharmacy/alerts`.
+- L'**acquittement** se fait dans la plateforme (bouton « Je prends en charge » du Centre de commande) : le backend appelle alors le webhook de reprise `risk-ack` de n8n. Pas de boutons Telegram (ils exigeraient une URL publique HTTPS).
+- Le panneau **Agents** affiche aussi les exécutions n8n (statut, étape, durée) : la plateforme les reçoit via `POST /api/agents/log` appelé par n8n à chaque étape clé.
+- Un bouton « Ouvrir n8n » (rôles médecin / owner) ouvre http://localhost:5678 dans un nouvel onglet.
+
+## 3. Test réel obligatoire avant `DONE.flag`
+Avec n8n lancé et une vraie clé : déclenche `fall_demo`, vérifie que le plan d'action vient **de l'API** (pas du secours), que le message Telegram part (si `TELEGRAM_BOT_TOKEN` et `TELEGRAM_CHAT_ID` sont définis), que l'escalade se produit sans acquittement, puis que `nurse_resolves` mène à `resolved` via `risk-verify`. Si la clé ou n8n ne sont pas disponibles sur la machine pendant la construction, construis tout, teste avec le Mock, et indique clairement dans `MORNING_REPORT.md` les commandes exactes pour faire le test réel.
+

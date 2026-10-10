@@ -81,11 +81,15 @@ body.login-page {
 .top-anchor { position: relative; }
 
 /* ─── Navigation du panneau gauche ─────────────────────── */
-#main-nav { display: flex; flex-direction: column; gap: 3px; padding: 10px 10px 8px; border-bottom: 1px solid var(--border-subtle); }
+#main-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 8px 8px 6px; border-bottom: 1px solid var(--border-subtle); flex: 0 0 auto; }
 .nav-btn {
-    display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid transparent;
-    background: transparent; color: var(--text-secondary); cursor: pointer; font-family: var(--font); font-size: 12.5px; font-weight: 500; text-align: left;
+    display: flex; align-items: center; gap: 6px; padding: 6px 7px; border-radius: var(--radius-sm); border: 1px solid transparent; min-width: 0;
+    background: transparent; color: var(--text-secondary); cursor: pointer; font-family: var(--font); font-size: 11px; font-weight: 500; text-align: left; line-height: 1.15;
 }
+.nav-btn .nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#main-nav .nav-btn[data-view="twin"] { grid-column: 1 / -1; font-size: 12px; }
+#sidebar { overflow-y: auto; }
+#patient-cards-container { flex: 0 0 auto !important; max-height: none !important; }
 .nav-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
 .nav-btn.active { background: rgba(59,130,246,.15); border-color: var(--border-active); color: var(--text-primary); }
 .nav-btn.disabled, .nav-btn:disabled { opacity: .35; cursor: not-allowed; }

@@ -28,6 +28,8 @@ def main() -> int:
     ap.add_argument("--wait", type=float, default=4.0, help="secondes d'attente après l'init 3D")
     ap.add_argument("--scenario", default=None, help="scénario à lancer avant la capture 'twin-scenario'")
     ap.add_argument("--scenario-wait", type=float, default=20.0)
+    ap.add_argument("--poses", action="store_true", help="capture des postures étendues (sim embarqué requis)")
+    ap.add_argument("--legacy-fall", action="store_true", help="déclenche le bouton de démo existant (chute patient_02) et capture")
     args = ap.parse_args()
 
     from playwright.sync_api import sync_playwright
@@ -56,7 +58,7 @@ def main() -> int:
 
         # zoom chambre 101 (bouton existant ajouté par scene.js)
         try:
-            page.click("#camera-controls button[title='Zoom to room 101']", timeout=3000)
+            page.click("#camera-controls button[title='Zoom to room 101']", timeout=3000, force=True)
             time.sleep(1.5)
             page.screenshot(path=str(out / "02-room101.png"))
             print("captured room101")
@@ -70,6 +72,30 @@ def main() -> int:
             print("captured scenario", args.scenario)
             # panneau agents
             page.screenshot(path=str(out / f"03b-agents-{args.scenario}.png"), clip={"x": 1290, "y": 56, "width": 310, "height": 844})
+
+        if args.legacy_fall:
+            page.evaluate("fetch('/api/demo/trigger', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({patient_id:'patient_02', event_type:'fall_and_pain', confidence:0.9})})")
+            time.sleep(2.5)
+            page.click("#camera-controls button[title='Zoom to room 102']", timeout=3000, force=True)
+            time.sleep(1.5)
+            page.screenshot(path=str(out / "04-legacy-fall-102.png"))
+            page.evaluate("fetch('/api/demo/trigger', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({patient_id:'patient_02', event_type:'recover', confidence:0.9})})")
+            print("captured legacy fall")
+
+        if args.poses:
+            cases = [("102", "sitting_bed", "awake_bed"), ("102", "sitting_chair", "out_of_bed"), ("103", "standing", "out_of_bed"),
+                     ("103", "walking", "out_of_bed"), ("104", "absent", "toilet"), ("104", "on_floor", "fall")]
+            for n, (room, posture, activity) in enumerate(cases, start=5):
+                body = json.dumps({"room": room, "action": "posture", "params": {"posture": posture, "activity": activity}})
+                page.evaluate(f"fetch('/api/demo/sim/action', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body: '{body}'}})")
+                time.sleep(3.0)
+                page.click(f"#camera-controls button[title='Zoom to room {room}']", timeout=3000, force=True)
+                time.sleep(1.5)
+                page.screenshot(path=str(out / f"0{n}-pose-{posture}-{room}.png"))
+                print("captured pose", posture)
+            for room in ("102", "103", "104"):
+                page.evaluate(f"fetch('/api/demo/sim/action', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify({{room:'{room}', action:'recover', params:{{}}}})}})")
+            page.click("#btn-overview", force=True)
 
         for i, view in enumerate([v for v in args.views.split(",") if v and v != "twin"], start=10):
             btn = page.query_selector(f"#main-nav .nav-btn[data-view='{view}']")
