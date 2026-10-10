@@ -41,6 +41,11 @@ def _on_scenario_event(kind: str, data: dict[str, Any]) -> None:
         current_scenario.update(name=None, room=None, started_at=None)
     elif kind == "resolution_step" and (data.get("params") or {}).get("hook"):
         _run_hook(data["params"]["hook"], str(data.get("room")))
+    elif kind == "scenario_step" and str((data.get("params") or {}).get("hook", "")).startswith("demo_"):
+        from .. import demo_v2
+
+        params = {"room": str(data.get("room")), **data["params"]}  # gestes des humains, joués par le pilote automatique
+        demo_v2.schedule(params["hook"], params, str(data.get("room")))
     manager.broadcast_nowait({"type": "scenario", "event": kind, **data})
 
 

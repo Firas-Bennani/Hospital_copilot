@@ -10,5 +10,5 @@ steps:
   - { at: 10, action: trend, metric: sys, target: 118, duration: 30, hold: 900 }
   - { at: 10, action: trend, metric: hr, target: 88, duration: 30, hold: 900 }
   - { at: 10, action: trend, metric: rr, target: 17, duration: 30, hold: 900 }
-  - { at: 10, action: trend, metric: temp, target: 37.5, duration: 35, hold: 900 }
+  - { at: 10, action: trend, metric: temp, target: 37.3, duration: 35, hold: 900 }
   - { at: 58, action: staff_leave }

@@ -91,11 +91,12 @@ class AmbulanceAgent(Agent):
                     if m.mode == "sim":
                         pts = [tuple(p) for p in json.loads(m.route_json)]
                         total = geo.route_length_m(pts)
+                        scale = m.time_scale or settings.ambulance_time_scale
                         m.speed_kmh = geo.speed_kmh(m.progress, m.id)
-                        done = m.progress * total + m.speed_kmh / 3.6 * dt * settings.ambulance_time_scale
+                        done = m.progress * total + m.speed_kmh / 3.6 * dt * scale
                         m.lat, m.lon, m.heading, m.remaining_m = geo.position_at(pts, done)
                         m.progress = min(1.0, done / total) if total else 1.0
-                        m.eta_at = now + timedelta(seconds=geo.eta_seconds(m.remaining_m, m.speed_kmh) / settings.ambulance_time_scale)
+                        m.eta_at = now + timedelta(seconds=geo.eta_seconds(m.remaining_m, m.speed_kmh) / scale)
                     else:  # GPS réel : la position vient du téléphone ; on ne fait que tenir l'ETA à jour
                         m.remaining_m = geo.haversine_m((m.lat, m.lon), (geo.CLINIC["lat"], geo.CLINIC["lon"]))
                         m.eta_at = now + timedelta(seconds=geo.eta_seconds(m.remaining_m, m.speed_kmh))

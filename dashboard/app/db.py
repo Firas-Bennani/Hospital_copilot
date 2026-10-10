@@ -42,7 +42,7 @@ def _migrate_columns() -> None:
     from sqlalchemy import inspect, text
 
     insp = inspect(engine)
-    wanted = {"risk": [("handled_by", "VARCHAR DEFAULT 'local' NOT NULL"), ("n8n_resume_url", "VARCHAR")]}
+    wanted = {"risk": [("handled_by", "VARCHAR DEFAULT 'local' NOT NULL"), ("n8n_resume_url", "VARCHAR")], "ambulancemission": [("time_scale", "FLOAT DEFAULT 0 NOT NULL")]}
     with engine.begin() as conn:
         for table, cols in wanted.items():
             if table not in insp.get_table_names():

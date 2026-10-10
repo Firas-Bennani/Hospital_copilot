@@ -576,3 +576,4 @@ class AmbulanceMission(SQLModel, table=True):
     preparation_json: str = "{}"
     ai_json: str = ""
     admission_id: Optional[int] = None
+    time_scale: float = 0.0  # accélération du trajet simulé pour cette mission (0 = réglage global AMBULANCE_TIME_SCALE)

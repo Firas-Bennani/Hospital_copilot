@@ -53,6 +53,7 @@ class MissionIn(BaseModel):
     mode: str = "sim"  # sim | gps
     route: str = "marsa"
     ambulance: str = "AMB-01"
+    time_scale: Optional[float] = None  # démo : accélère ce trajet simulé
 
 
 class TrackIn(BaseModel):
@@ -100,10 +101,11 @@ async def create_mission(body: MissionIn, session: Session = Depends(get_session
     pts = route["points"]
     now = datetime.now(timezone.utc)
     total = geo.route_length_m(pts)
+    scale = max(0.1, min(60.0, body.time_scale)) if body.time_scale else settings.ambulance_time_scale
     m = AmbulanceMission(ambulance_code=body.ambulance, patient_pk=p.id, patient_id=p.patient_id, patient_name=p.full_name, age=p.age, sex=p.sex, reason=body.reason.strip()[:300], emergency_type=body.emergency_type,
                          severity=body.severity, vitals_json=json.dumps(body.vitals, ensure_ascii=False), mode=body.mode, status="en_route", departed_at=now, reserved_room=room, lat=pts[0][0], lon=pts[0][1],
                          remaining_m=total, route_json=json.dumps(pts if body.mode == "sim" else []), route_label=route["label"] if body.mode == "sim" else "GPS réel (téléphone)", track_token=secrets.token_urlsafe(10),
-                         eta_at=now + timedelta(seconds=geo.eta_seconds(total, 40.0) / (settings.ambulance_time_scale if body.mode == "sim" else 1.0)),
+                         eta_at=now + timedelta(seconds=geo.eta_seconds(total, 40.0) / (scale if body.mode == "sim" else 1.0)), time_scale=scale if body.time_scale else 0.0,
                          preparation_json=json.dumps(geo.PREPARATION.get(body.emergency_type, geo.PREPARATION["other"]), ensure_ascii=False))
     session.add(m)
     audit(session, user, "dispatch", "ambulance_mission", p.patient_id, {"room": room, "type": body.emergency_type, "mode": body.mode})

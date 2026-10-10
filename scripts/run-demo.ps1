@@ -19,6 +19,14 @@ if ($Reset) { Remove-Item -Force -ErrorAction SilentlyContinue "dashboard\clinic
 $env:EMBEDDED_SIM = "1"
 $env:FOLLOWUP_RECHECK_S = "30"      # re-vérification 30 s après la sortie de l'infirmier (démo)
 $env:ESCALATION_CRITICAL_S = "120"
+# V2 : delais de demonstration (trajet d'ambulance accelere, resultats du bilan en 30 s, relance de medicament a 2 min)
+$env:AMBULANCE_TIME_SCALE = "6"
+$env:FEVER_LAB_DELAY_S = "30"
+$env:MED_RELAUNCH_S = "120"
+$env:MED_ESCALATE_S = "240"
+$env:PSYCH_TICK_S = "10"
+$env:PREDICTION_TICK_S = "5"
+$env:THERMAL_RECHECK_S = "60"
 $env:PLATFORM_URL = "http://localhost:$Port"   # URL que n8n rappelle (plan, escalade, resolution)
 
 Write-Host "`n=== Hospital Copilot — démo ===" -ForegroundColor Cyan

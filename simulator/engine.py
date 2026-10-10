@@ -166,7 +166,8 @@ class VirtualRoom:
         for m, b in base.items():
             tau = 25.0 if m != "temp" else 180.0
             self.vitals[m] += (b - self.vitals[m]) * min(1.0, dt / tau)
-            noise = {"hr": 1.6, "spo2": 0.2, "sys": 2.2, "dia": 1.4, "temp": 0.03, "rr": 0.5, "glucose": 0.006, "st": 0.01}[m] * p.variability
+            # bruit par pas ; écart-type au repos ≈ bruit × 3,5 (× 9,5 pour la température) : FC ± 2,5 · PAS ± 3 · SpO2 ± 0,5 · FR ± 0,9 · T° ± 0,08
+            noise = {"hr": 0.7, "spo2": 0.15, "sys": 0.8, "dia": 0.7, "temp": 0.008, "rr": 0.25, "glucose": 0.006, "st": 0.01}[m] * p.variability
             self.vitals[m] += random.gauss(0, noise) * math.sqrt(min(dt, 1.0))
         self.vitals["hr"] = max(28, min(200, self.vitals["hr"]))
         self.vitals["spo2"] = max(70, min(100, self.vitals["spo2"]))

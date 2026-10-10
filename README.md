@@ -38,8 +38,14 @@ Le simulateur embarqué alimente les appareils des 4 chambres et les chambres vi
 | Edge Raspberry Pi | `python edge/main.py --fake --server http://localhost:8000` (PC) ; voir `MORNING_REPORT.md` pour le vrai Pi |
 | Webcam PC → 3D | `python dashboard/camera_loop.py --source 0` (poids YOLO requis) |
 
+## V2 (branche `feat/v2`)
+Dossier médical (15 ans d'historique fictif), fièvre vraie ≠ hausse thermique, SpO2, diagnostics live, ordonnance de traitement et plan
+d'administration, psychologie (rôle `psychiatre`, questionnaire sur tablette), prédiction des crises, ambulances en temps réel (GPS, chambre
+réservée), un workflow n8n par agent. Démo : **Lancer la démo → `full_demo_v2`** ; script minuté et version jury de 3 minutes dans
+[`docs/demo_v2.md`](docs/demo_v2.md) ; bilan dans `MORNING_REPORT.md` (section V2) ; avancement dans `PROGRESS_V2.md`.
+
 ## n8n (orchestration réelle)
-`npx n8n`, puis `.\n8n\import.ps1` (ou `./n8n/import.sh`) : crée les credentials et active les 4 workflows (`risk-triage`, `risk-verify`,
+`npx n8n`, puis `.\n8n\import.ps1` (ou `./n8n/import.sh`) : crée les credentials et active les 15 workflows (un par agent ; V1 : `risk-triage`, `risk-verify`,
 `shift-report`, `pharmacy-alerts`). La plateforme leur délègue la réponse aux risques et reprend la main seule si n8n est arrêté.
 Voir `n8n/README.md`.
 

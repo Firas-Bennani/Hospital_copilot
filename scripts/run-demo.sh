@@ -20,6 +20,8 @@ fi
 [ -f .env ] || cp .env.example .env
 [ "$RESET" = "1" ] && rm -f dashboard/clinic.db dashboard/clinic.db-wal dashboard/clinic.db-shm
 export EMBEDDED_SIM=1 FOLLOWUP_RECHECK_S=30 ESCALATION_CRITICAL_S=120
+# V2 : délais de démonstration (trajet d'ambulance accéléré, résultats du bilan en 30 s, relance de médicament à 2 min)
+export AMBULANCE_TIME_SCALE=6 FEVER_LAB_DELAY_S=30 MED_RELAUNCH_S=120 MED_ESCALATE_S=240 PSYCH_TICK_S=10 PREDICTION_TICK_S=5 THERMAL_RECHECK_S=60
 export PLATFORM_URL="http://localhost:$PORT"   # URL que n8n rappelle (plan, escalade, résolution)
 echo
 echo "=== Hospital Copilot — démo ==="

@@ -11,6 +11,8 @@ intervalle d'incertitude. Estimation de prototype, non validée cliniquement.
 
 from __future__ import annotations
 
+import os
+
 from typing import Any, Optional, Sequence
 
 LABELS = {"seizure": "Crise d'épilepsie", "sepsis": "Sepsis / choc septique", "cardiac": "Infarctus / événement cardiaque", "deterioration": "Détérioration générale", "diabetes": "Complication du diabète"}
@@ -21,13 +23,17 @@ def level(risk: float) -> str:
     return "critique" if risk >= 80 else "élevé" if risk >= 60 else "modéré" if risk >= 30 else "faible"
 
 
+MIN_SPAN_S = float(os.environ.get("PREDICTION_MIN_SPAN_S", "90"))  # durée minimale d'observation pour parler d'une tendance
+NEWS2_RISE = 0.1  # point par minute : en dessous, la variation du NEWS2 relève du bruit de mesure
+
+
 def slope_per_min(series: Sequence[tuple[float, float]], window_s: float = 600.0) -> Optional[float]:
     """Pente (unités par minute) par régression linéaire sur la fenêtre ; None s'il y a trop peu de points."""
     if not series:
         return None
     t_end = series[-1][0]
     pts = [(t, v) for t, v in series if t_end - t <= window_s]
-    if len(pts) < 8 or pts[-1][0] - pts[0][0] < 20:
+    if len(pts) < 8 or pts[-1][0] - pts[0][0] < MIN_SPAN_S:
         return None
     n = len(pts)
     mt, mv = sum(t for t, _ in pts) / n, sum(v for _, v in pts) / n
@@ -118,9 +124,9 @@ def predict(ctx: dict[str, Any]) -> list[dict[str, Any]]:
     ], w_st, int(st is not None) + int(tropo is not None) + int(len(ser.get("st") or []) >= 8), 2))
 
     # 4) détérioration générale (NEWS2 et sa pente)
-    w_news = window_to(news2, 7.0, sl["news2"]) if news2 is not None and news2 < 7 and sl["news2"] and sl["news2"] > 0.02 else (fmt_window(0, 15) if news2 is not None and news2 >= 7 else None)
+    w_news = window_to(news2, 7.0, sl["news2"]) if news2 is not None and news2 < 7 and sl["news2"] and sl["news2"] >= NEWS2_RISE else (fmt_window(0, 15) if news2 is not None and news2 >= 7 else None)
     out.append(_result("deterioration", [
-        (news2 is not None and news2 >= 3, min(60, 8 * (news2 or 0)), f"NEWS2 {news2}"), (sl["news2"] is not None and sl["news2"] > 0.02, min(25, 250 * (sl["news2"] or 0)), f"NEWS2 en hausse (+{(sl['news2'] or 0) * 10:.1f} point(s) en 10 min)"),
+        (news2 is not None and news2 >= 3, min(60, 8 * (news2 or 0)), f"NEWS2 {news2}"), (sl["news2"] is not None and sl["news2"] >= NEWS2_RISE, min(25, 100 * (sl["news2"] or 0)), f"NEWS2 en hausse (+{(sl['news2'] or 0) * 10:.1f} point(s) en 10 min)"),
         (sl["spo2"] is not None and sl["spo2"] < -0.2, 8, "SpO2 en baisse"), (sl["hr"] is not None and sl["hr"] > 0.8, 6, "FC en hausse"), (sl["sys"] is not None and sl["sys"] < -0.5, 6, "PA en baisse"),
     ], w_news, len(ser.get("news2") or []) // 8 + int(news2 is not None), 2))
 

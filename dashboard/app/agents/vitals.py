@@ -61,9 +61,11 @@ class VitalsAgent(Agent):
             with session_scope() as s:
                 ctx = patient_context(s, room)
             lim = limits_for(ctx.get("patient"))
+            known = ctx.get("patient") is not None
         except Exception:
-            lim = dict(DEFAULT_LIMITS)
-        self.limits_cache[room] = (time.time(), lim)
+            lim, known = {**DEFAULT_LIMITS, "copd": False}, False
+        # patient pas encore lisible (démarrage, base occupée) : nouvelle lecture 10 s plus tard, pas 5 min de seuils par défaut
+        self.limits_cache[room] = (time.time() if known else time.time() - 290, lim)
         return lim
 
     async def raise_candidate(self, room: str, rtype: str, details: dict[str, Any], reasoning: str, min_interval: float = 120.0, rank: int = 0) -> None:
@@ -186,7 +188,7 @@ class VitalsAgent(Agent):
             v = handler.room_state(room).get("vitals") or {}
             if v.get("hr") is None or v.get("spo2") is None:
                 continue
-            res = news2(rr=v.get("rr"), spo2=v.get("spo2"), on_oxygen=bool((v.get("o2FlowLMin") or 0) > 0), sbp=v.get("sys"), hr=v.get("hr"), temp=v.get("tempC"))
+            res = news2(rr=v.get("rr"), spo2=v.get("spo2"), on_oxygen=bool((v.get("o2FlowLMin") or 0) > 0), sbp=v.get("sys"), hr=v.get("hr"), temp=v.get("tempC"), spo2_scale2=bool(self.limits(room).get("copd")))
             handler.room_state(room)["news2"] = res.to_dict()
             if res.score >= 5:
                 await self.raise_candidate(room, "news2_high", {"news2": res.score, "components": res.components, **{k: v.get(k) for k in ("hr", "spo2", "sys", "tempC", "rr")}},

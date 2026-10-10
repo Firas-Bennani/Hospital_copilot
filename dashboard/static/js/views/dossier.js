@@ -187,5 +187,5 @@ const DossierView = (() => {
     });
     function select(pid) { selected = pid; current = null; if (mounted && host) render(host); }
     Views.register('dossier', { title: 'Dossier médical', perm: 'open_medical_record', mount(el) { mounted = true; render(el); }, unmount() { mounted = false; if (chart) { chart.destroy(); chart = null; } if (observer) observer.disconnect(); } });
-    return { select, state: () => ({ items: items.length, total, loading, selected, scope }) };
+    return { select };
 })();

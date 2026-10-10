@@ -126,6 +126,7 @@ class FollowUpAgent(Agent):
             await self.log(ev.payload.get("room"), input=f"« Marquer résolu » sur le risque #{rid} par {ev.payload.get('by')}", reasoning=f"La résolution est soumise à vérification : re-contrôle de l'état réel dans {settings.followup_recheck_s:.0f} s.", output="vérification planifiée", risk_id=rid)
             return
         if ev.topic == "internal/risk/created":
+            await self.join_visit(str(ev.payload.get("room")), int(ev.payload["risk_id"]))
             return
         p = ev.payload
         room, kind, d = p["room"], p["kind"], p["data"]
@@ -144,6 +145,27 @@ class FollowUpAgent(Agent):
             else:
                 self.staff_in[room] = False
                 await self.on_staff_leave(room, d.get("durationSec"), source="staff")
+
+    async def join_visit(self, room: str, rid: int) -> None:
+        """Un risque détecté pendant qu'un soignant est déjà dans la chambre est pris en charge par la visite en cours."""
+        from ..risks import refresh_room_level, risk_dict
+
+        if room not in self.visits:
+            return
+        with session_scope() as s:
+            r = s.get(Risk, rid)
+            if not r or r.status not in ("open", "escalated"):
+                return
+            r.status = "in_progress"
+            r.acknowledged_at = r.acknowledged_at or datetime.now(timezone.utc)
+            refresh_room_level(s, room)
+            payload = risk_dict(s, r)
+        await manager.broadcast({"type": "risk", "event": "in_progress", "risk": payload})
+        from .. import n8n
+
+        n8n.release_soon([rid], "personnel dans la chambre", acknowledged=True)
+        await self.log(room, input=f"risque #{rid} détecté pendant la visite #{self.visits[room]}", reasoning="Un soignant est déjà dans la chambre : le risque rejoint la prise en charge en cours et sera revérifié à sa sortie.",
+                       output=f"#{rid} in_progress", risk_id=rid)
 
     async def on_staff_enter(self, room: str, persons: int, source: str) -> None:
         from ..risks import open_risks_in_room, refresh_room_level, risk_dict

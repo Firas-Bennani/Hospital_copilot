@@ -3,7 +3,9 @@
  */
 const DemoLauncher = (() => {
     'use strict';
-    const ICON = { full_demo: '🎬', fall_demo: '🚨', nurse_resolves: '🧑‍⚕️', sepsis_trend: '🌡️', iv_empty: '💧', fever_101: '🔥', normal_night: '🌙', stop: '⏹️' };
+    const ICON = { full_demo_v2: '🌟', full_demo: '🎬', fall_demo: '🚨', nurse_resolves: '🧑‍⚕️', sepsis_trend: '🦠', iv_empty: '💧', fever_101: '🔥', room_overheat_102: '☀️', desaturation_103: '🫁', cardiac_event_102: '❤️',
+        hypoglycemia_104: '🩸', seizure_103: '⚡', deterioration_101: '📉', normal_night: '🌙', stop: '⏹️' };
+    const ORDER = ['full_demo_v2', 'full_demo', 'fall_demo', 'fever_101', 'room_overheat_102', 'desaturation_103', 'sepsis_trend', 'cardiac_event_102', 'hypoglycemia_104', 'seizure_103', 'deterioration_101', 'iv_empty', 'normal_night', 'stop'];
     let scenarios = [];
     let current = null;
 
@@ -13,10 +15,13 @@ const DemoLauncher = (() => {
 
     function render() {
         const menu = document.getElementById('demo-menu'); if (!menu) return;
-        const order = ['full_demo', 'fall_demo', 'nurse_resolves', 'fever_101', 'sepsis_trend', 'iv_empty', 'normal_night', 'stop'];
-        const list = [...scenarios].sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
+        const rank = (n) => { const i = ORDER.indexOf(n); return i < 0 ? 99 : i; };
+        const isRes = (s) => (s.resolves && s.resolves.length) || s.name === 'nurse_resolves';
+        const list = scenarios.filter(s => !isRes(s)).sort((a, b) => rank(a.name) - rank(b.name));
+        const res = scenarios.filter(isRes).sort((a, b) => a.name.localeCompare(b.name));
+        const item = (s) => `<button data-name="${s.name}">${ICON[s.name] || (isRes(s) ? '🧑‍⚕️' : '▶')} <b>${s.name}</b> <span class="muted small">(chambre ${s.room}${s.duration ? ', ' + s.duration + ' s' : ''})</span><span class="demo-desc">${Api.esc(s.description)}</span></button>`;
         menu.innerHTML = `<div class="notif-head"><span>Scénarios de démonstration</span>${current && current.name ? `<span class="tag tag-in_progress">en cours : ${current.name}</span>` : ''}</div>`
-            + list.map(s => `<button data-name="${s.name}">${ICON[s.name] || '▶'} <b>${s.name}</b> <span class="muted small">(chambre ${s.room}${s.duration ? ', ' + s.duration + ' s' : ''})</span><span class="demo-desc">${Api.esc(s.description)}</span></button>`).join('');
+            + list.map(item).join('') + `<div class="notif-head"><span>Résolutions par un soignant</span><span class="muted small">lancées aussi par « Je prends en charge »</span></div>` + res.map(item).join('');
         menu.querySelectorAll('button[data-name]').forEach(b => b.addEventListener('click', () => start(b.dataset.name)));
     }
 

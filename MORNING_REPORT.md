@@ -126,3 +126,69 @@ Déjà fait cette fois-ci : les credentials « Hospital Copilot — … » et le
 | Pas de Pi / capteurs / Telegram / clé Anthropic | Simulation automatique ; Telegram et Anthropic activés par variables d'environnement |
 | Port 8000 occupé par un autre projet sur cette machine | Test réel sur le port 8010 ; `run-demo.ps1 -Port 8010` + `import.ps1 -PlatformUrl …` (voir §6) |
 | `computer_vision/src/datasets/` absent du dépôt source (ignoré par `.gitignore`) | Module `harmonize.py` reconstruit (tests CV verts) ; données `computer_vision/data/**` intactes |
+
+---
+
+# V2 — rapport (branche `feat/v2`)
+
+`feat/platform` reste la version de démo sûre (V1, non modifiée). La V2 est sur **`feat/v2`** ; avancement dans `PROGRESS_V2.md`,
+décisions dans `DECISIONS.md`, synchronisation des travaux d'Amal dans `AMAL_SYNC.md`, script de démo dans **`docs/demo_v2.md`**.
+
+## V2.1 Commandes
+
+```powershell
+git checkout feat/v2
+.\scripts\run-demo.ps1 -Reset             # http://localhost:8000 — -Reset obligatoire la première fois (nouvelles tables et données)
+.\scripts\run-demo.ps1 -Port 8010 -Reset  # si le port 8000 est pris par un autre projet
+npx n8n                                     # puis, dans un autre terminal :
+.\n8n\import.ps1                           # importe et active les 15 workflows (-Check pour vérifier, -PlatformUrl http://127.0.0.1:8010 si besoin)
+.venv\Scripts\python -m pytest dashboard/tests computer_vision/tests edge/tests simulator/tests -q   # 200 tests
+```
+Linux / macOS : `./scripts/run-demo.sh --reset`, `./n8n/import.sh`.
+Démo : bouton **Lancer la démo → `full_demo_v2`** (8 min, tout est joué automatiquement) ; version jury de 3 minutes dans `docs/demo_v2.md`.
+
+## V2.2 Comptes de démonstration (mot de passe `hackcure2026`)
+
+| Identifiant | Rôle | Nouveautés V2 |
+|---|---|---|
+| `owner` | Propriétaire | Tout, dont la Carte des agents et le lancement des démos |
+| `medecin` | Médecin généraliste | Dossier médical (écriture), diagnostics live, ordonnance de traitement, prédictions, psychologie en lecture complète |
+| `medecin_garde` | Médecin de garde | Idem + destinataire des fièvres vraies, des prédictions critiques, des prises en retard > 60 min |
+| `infirmier` | Infirmier | Plan de soins (administrer), fil médecin ↔ infirmier, dossier en lecture, psychologie : état et consignes seulement |
+| `psychiatre` | **Psychiatre (nouveau)** | Voit toute la plateforme ; écrit la psychologie (prescriptions psychothérapeutiques) et le dossier ; reçoit l'alerte « item 9 » |
+| `receptionniste` | Réceptionniste | Ambulances (fiche d'intervention, départ), admissions ; dossier : identité et admissions |
+| `pharmacien` | Pharmacien | Pharmacie ; dossier : allergies et traitements |
+
+## V2.3 Ce qui marche (vérifié par tests et captures `docs/screenshots/v2/`)
+
+- **Travaux d'Amal intégrés** (étage 1, modes RDC / Étage 1 / Tout / Éclaté, visite à pied, risque comportemental) ; synchronisation re-jouable.
+- **Environnement** : fenêtre, radiateur, clim et veilleuse réellement animés dans les 4 chambres, par un humain, un agent ou n8n.
+- **Boucle soignant pour tous les scénarios** : un risque clinique ne se lève jamais seul ; « Je prends en charge » → le bon soignant entre (infirmier, médecin de garde, psychiatre) → il sort → revérification déterministe → « résolu et vérifié ». 15 scénarios de résolution.
+- **SpO2** de premier plan (seuils standard et BPCO, NEWS2 échelle 2, KPI, oxymètre dans chaque chambre).
+- **Fièvre vraie ≠ hausse thermique** : température centrale confirmée → médecin de garde → bilan clinique → bilan biologique validé → confort ensuite → résultats au dossier. Chambre chaude : confort seul, sans alerte.
+- **Dossier médical** : 9 à 15 ans d'historique fictif par patient, frise, filtres, recherche, courbes biologiques, synthèse IA, impression, accès par rôle et audit.
+- **Diagnostics live**, fil médecin ↔ infirmier, **ordonnance de traitement** (allergies bloquantes, interactions), **plan d'administration**, rappels / relances / escalade, stock décrémenté, **comptes rendus d'intervention** à signer.
+- **Psychologie** : questionnaire d'admission sur tablette (PHQ-9, GAD-7, sommeil), alerte immédiate item 9, score de bien-être, prescriptions.
+- **Prédictions** : 5 conditions, risque 0–100, fenêtre de temps estimée, confiance, facteurs ; glucomètre et segment ST simulés.
+- **Ambulances** : carte Leaflet, ETA en continu, chambre réservée dès le départ, GPS simulé **et** GPS réel par téléphone, arrivée en 3D, admission.
+- **n8n** : un workflow par agent — 13 agents, **15 workflows actifs**, chacun avec une exécution réelle vérifiée ; repli local automatique ; vue **Carte des agents**.
+- **`full_demo_v2`** : scénario de 8 min avec pilote automatique (`dashboard/app/demo_v2.py`) ; test d'intégration `dashboard/tests/test_v2_full_demo.py`. **Passages réels** sur le port 8010 (n8n, Telegram) : trois passages complets de `full_demo_v2` ; au dernier (exécutions n8n 361–412) les 11 gestes du pilote sont joués, la mission est admise, le questionnaire rempli, le parcours fièvre mené au bout, la prise administrée, et 16 des 17 risques ouverts pendant la démo (fièvre, prédictions, NEWS2, chute, bien-être…) finissent « résolus et vérifiés », sans réouverture ; le dernier est un « sortie du lit » de fond en 101 (patient au fauteuil), hors scénario. Les deux premiers passages ont obtenu des réponses de Claude validées (14 exécutions : `risk-triage`, `fever-pathway`, `diagnostics-live`, `ambulance-dispatch`, `psych-monitoring`, `vision-watch`) ; **au dernier, l'API Anthropic a répondu « credit balance is too low » : tous les textes d'IA sont des réponses de secours** (voir `BLOCKERS.md`). La détection, la sévérité et la vérification, déterministes, n'en dépendent pas.
+
+## V2.4 Ce qui est simulé
+
+- **Toutes les données patients sont fictives** (identités, historique de 15 ans, biologie, imagerie) et générées de façon déterministe.
+- **Appareils** : oxymètre, glucomètre, ECG / ST, perfusion, température centrale, ambiance — tous simulés (seule la chambre 101 peut recevoir un vrai Raspberry Pi).
+- **Résultats de laboratoire** : simulés (délai `FEVER_LAB_DELAY_S`, 30 s en démo), cohérents avec le tableau clinique.
+- **Soignants** : en simulation, « Je prends en charge » fait entrer un soignant virtuel ; dès qu'un edge réel parle pour la chambre, rien n'est simulé.
+- **Dans `full_demo_v2`**, les gestes humains (sortie, départ de l'ambulance, questionnaire, bilan clinique, validation, ordonnance, administration, prise en charge) sont joués par le pilote **à travers l'API**, et tracés « Démo V2 — geste simulé ».
+- **Ambulance** : trajets embarqués (polylignes), temps accéléré × 6 en démo ; le GPS réel demande HTTPS sur le téléphone (voir `docs/ambulance.md`).
+- **Prédictions** : règles pondérées et extrapolation linéaire — « Estimation de prototype, non validée cliniquement ». Le niveau de confiance mesure la quantité de données, pas une probabilité.
+- **Questionnaire de sommeil** : rédigé pour le projet (non validé). PHQ-9 et GAD-7 sont les échelles standard.
+- Détection et sévérité restent **déterministes en Python** ; le LLM explique, synthétise, propose. Chaque résultat d'IA porte « Aide à la décision — validation médicale requise ».
+
+## V2.5 Points d'attention
+
+- Une base créée avant la V2 doit être recréée (`-Reset`) : nouvelles tables, patients, médicaments et historique.
+- Sur cette machine le port 8000 est occupé par un autre projet : les tests réels de la V2 ont été faits sur le port 8010.
+- Navigateur sans carte graphique : la 3D est lente (le serveur n'est pas en cause).
+- `.env` (clé Anthropic, Telegram, `N8N_*`) n'est jamais commité ; les JSON de `n8n/workflows/` ne contiennent aucun secret.
