@@ -1,0 +1,8 @@
+name: fever_101
+description: Chambre 101 (reelle) - montee de la temperature cutanee (camera thermique) et du thermometre -> risque fievre. Bonus chaufferette.
+room: "101"
+duration: 60
+steps:
+  - { at: 0, action: thermal, skinTempC: 38.6, duration: 30 }
+  - { at: 0, action: trend, metric: temp, target: 39.1, duration: 40, hold: 900 }
+  - { at: 5, action: trend, metric: hr, target: 104, duration: 40, hold: 900 }
