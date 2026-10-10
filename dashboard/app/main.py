@@ -12,8 +12,8 @@ import json
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import state
@@ -146,7 +146,10 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     @app.get("/")
-    async def serve_dashboard():
+    async def serve_dashboard(request: Request):
+        auth = _import_optional(".auth")
+        if auth is not None and settings.auth_required and auth.optional_user(request) is None:
+            return RedirectResponse(url="/login", status_code=302)
         return FileResponse(str(STATIC_DIR / "index.html"))
 
     @app.get("/login")

@@ -1,0 +1,322 @@
+"""
+Modèle de données SQLModel (section 5 du PROMPT).
+SQLite par défaut, SQL Server si DATABASE_URL est défini.
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime, timezone
+from typing import Optional
+
+from sqlmodel import Field, SQLModel
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+# ─── Lieux et équipements ─────────────────────────────────────────────────────
+class Room(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    code: str = Field(index=True, unique=True)  # "101".."104"
+    type: str = "standard"
+    is_real_instrumented: bool = False
+    wing: str = "nord"
+
+
+class RoomEquipment(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    room_code: str = Field(index=True)
+    type: str  # window | heater | ac | light
+    state: str = "off"  # open|closed|on|off
+    value: Optional[float] = None
+    last_command_by: Optional[str] = None
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class MedicalDevice(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    device_id: str = Field(index=True, unique=True)  # "101-iv_pump"
+    room_code: str = Field(index=True)
+    type: str  # iv_pump|nutrition_pump|transfusion|bp|ecg|oxygen|spo2|thermometer
+    status: str = "standby"  # running|paused|alarm|off|standby
+    label: str = ""
+    last_seen: Optional[datetime] = None
+
+
+# ─── Patients ────────────────────────────────────────────────────────────────
+class Patient(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    patient_id: str = Field(index=True, unique=True)  # "patient_01" (identifiant 3D existant)
+    code: str = Field(index=True, unique=True)  # "PAT-0001"
+    display_name: str  # "Patient A" (étiquette 3D existante)
+    first_name: str
+    last_name: str
+    birth_date: date
+    sex: str = "M"  # M | F
+    allergies: str = ""  # séparées par des virgules
+    blood_group: str = "O+"
+    fall_risk: str = "medium"  # low | medium | high
+    history: str = ""  # antécédents
+    created_at: datetime = Field(default_factory=utcnow)
+
+    @property
+    def age(self) -> int:
+        today = date.today()
+        return today.year - self.birth_date.year - ((today.month, today.day) < (self.birth_date.month, self.birth_date.day))
+
+    @property
+    def full_name(self) -> str:
+        return f"{self.first_name} {self.last_name}"
+
+    @property
+    def allergy_list(self) -> list[str]:
+        return [a.strip().lower() for a in self.allergies.split(",") if a.strip()]
+
+
+class Admission(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    patient_id: int = Field(foreign_key="patient.id", index=True)
+    room_code: str = Field(index=True)
+    admitted_at: datetime = Field(default_factory=utcnow)
+    discharged_at: Optional[datetime] = None
+    reason: str = ""
+    referring_doctor: str = ""
+
+    @property
+    def active(self) -> bool:
+        return self.discharged_at is None
+
+
+# ─── Mesures ─────────────────────────────────────────────────────────────────
+class VitalReading(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    device_id: str = Field(index=True)
+    admission_id: Optional[int] = Field(default=None, index=True)
+    room_code: str = Field(index=True)
+    metric: str = Field(index=True)  # hr, spo2, sys, dia, map, tempC, rateMlH, volumeLeftMl, flowLMin...
+    value: float
+    unit: str = ""
+    ts: datetime = Field(default_factory=utcnow, index=True)
+
+
+class EnvironmentReading(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    room_code: str = Field(index=True)
+    metric: str  # tempC, humidity, motion, doorOpen, skinTempC
+    value: float
+    ts: datetime = Field(default_factory=utcnow, index=True)
+
+
+class PatientStateSnapshot(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    admission_id: Optional[int] = Field(default=None, index=True)
+    room_code: str = Field(index=True)
+    posture: str = "lying_bed"
+    activity: str = "awake_bed"
+    zone: str = "bed"
+    expression: str = "neutral"
+    skin_temp_c: Optional[float] = None
+    persons: int = 1
+    source: str = "sim"
+    ts: datetime = Field(default_factory=utcnow, index=True)
+
+
+# ─── Risques et plans d'action ───────────────────────────────────────────────
+class Risk(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    admission_id: Optional[int] = Field(default=None, index=True)
+    room_code: str = Field(index=True)
+    type: str = Field(index=True)  # fall, unaccompanied_bed_exit, fever, sepsis_trend, iv_empty, ...
+    title: str = ""
+    severity: str = "medium"  # low|medium|high|critical
+    status: str = "open"  # open|in_progress|resolved|escalated
+    source_agent: str = "RiskAgent"
+    explanation: str = ""
+    news2: Optional[int] = None
+    dedup_key: str = Field(default="", index=True)
+    detected_at: datetime = Field(default_factory=utcnow)
+    acknowledged_at: Optional[datetime] = None
+    resolved_at: Optional[datetime] = None
+    verified_at: Optional[datetime] = None
+    escalated_at: Optional[datetime] = None
+    resolved_by: Optional[str] = None
+    notes: str = ""
+
+
+class ActionPlan(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    risk_id: int = Field(foreign_key="risk.id", index=True)
+    summary: str = ""
+    created_by: str = "RiskAgent"
+    llm_provider: str = "mock"
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class ActionStep(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    plan_id: int = Field(foreign_key="actionplan.id", index=True)
+    order: int = 0
+    text: str
+    suggested_by_ai: bool = True
+    done: bool = False
+    done_by: Optional[str] = None
+    done_at: Optional[datetime] = None
+
+
+class StaffVisit(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    room_code: str = Field(index=True)
+    admission_id: Optional[int] = Field(default=None, index=True)
+    risk_id: Optional[int] = Field(default=None, index=True)
+    started_at: datetime = Field(default_factory=utcnow)
+    ended_at: Optional[datetime] = None
+    persons: int = 2
+    staff_name: Optional[str] = None
+
+
+# ─── Personnes ───────────────────────────────────────────────────────────────
+class User(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    username: str = Field(index=True, unique=True)
+    hashed_password: str
+    role: str  # pharmacist|receptionist|nurse|duty_doctor|general_doctor|owner
+    full_name: str = ""
+    active: bool = True
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class Staff(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    role: str  # nurse|duty_doctor|general_doctor|pharmacist|receptionist|aide
+    on_duty: bool = False
+    phone: str = ""
+    current_room: Optional[str] = None
+
+
+# ─── Pharmacie ───────────────────────────────────────────────────────────────
+class Medication(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    dci: str = Field(index=True)  # dénomination commune internationale
+    brand: str = ""
+    form: str = "comprimé"  # comprimé|gélule|solution injectable|sirop|poche|...
+    dosage: str = ""
+    unit: str = "boîte"
+    stock: int = 0
+    threshold: int = 5
+    expiry: Optional[date] = None
+    allergen_tags: str = ""  # ex. "pénicilline,bêta-lactamine"
+
+    @property
+    def low_stock(self) -> bool:
+        return self.stock <= self.threshold
+
+    def expiring_within(self, days: int = 60) -> bool:
+        return self.expiry is not None and (self.expiry - date.today()).days <= days
+
+
+class Treatment(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    admission_id: int = Field(foreign_key="admission.id", index=True)
+    medication_id: int = Field(foreign_key="medication.id")
+    posology: str = ""
+    route: str = "PO"  # PO|IV|SC|IM|INH
+    start: datetime = Field(default_factory=utcnow)
+    end: Optional[datetime] = None
+    prescriber: str = ""
+
+
+# ─── Documents ───────────────────────────────────────────────────────────────
+class MedicalReport(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    admission_id: int = Field(foreign_key="admission.id", index=True)
+    author: str = ""
+    title: str = "Rapport médical"
+    content: str = ""
+    status: str = "draft"  # draft|signed
+    ai_draft: bool = False
+    created_at: datetime = Field(default_factory=utcnow)
+    signed_at: Optional[datetime] = None
+
+
+class Prescription(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    admission_id: int = Field(foreign_key="admission.id", index=True)
+    prescriber: str = ""
+    status: str = "draft"  # draft|signed
+    notes: str = ""
+    created_at: datetime = Field(default_factory=utcnow)
+    signed_at: Optional[datetime] = None
+
+
+class PrescriptionLine(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    prescription_id: int = Field(foreign_key="prescription.id", index=True)
+    medication_id: int = Field(foreign_key="medication.id")
+    dosage: str = ""
+    frequency: str = ""
+    duration_days: int = 5
+    route: str = "PO"
+    allergy_warning: bool = False
+
+
+class ShiftReport(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    shift_start: datetime
+    shift_end: datetime
+    author: str = "ReportAgent"
+    content: str = ""  # markdown
+    status: str = "draft"  # draft|validated
+    validated_by: Optional[str] = None
+    created_at: datetime = Field(default_factory=utcnow)
+    validated_at: Optional[datetime] = None
+
+
+class MoodObservation(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    admission_id: Optional[int] = Field(default=None, index=True)
+    room_code: str = Field(index=True)
+    mood: str = "neutral"  # calm|anxious|pain|sad|agitated|neutral|happy
+    source: str = "VisionAgent"
+    note: str = ""
+    ts: datetime = Field(default_factory=utcnow, index=True)
+
+
+# ─── Journalisation ──────────────────────────────────────────────────────────
+class Notification(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    level: str = "info"  # info|warning|critical
+    title: str
+    body: str = ""
+    room_code: Optional[str] = Field(default=None, index=True)
+    risk_id: Optional[int] = Field(default=None, index=True)
+    target_role: str = "nurse"  # nurse|duty_doctor|all
+    channels: str = "in_app"  # "in_app,telegram"
+    telegram_sent: bool = False
+    read: bool = False
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+
+
+class AgentLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    agent: str = Field(index=True)
+    room_code: Optional[str] = Field(default=None, index=True)
+    input: str = ""
+    reasoning: str = ""
+    output: str = ""
+    status: str = "ok"  # ok|error|skipped
+    risk_id: Optional[int] = Field(default=None, index=True)
+    duration_ms: int = 0
+    ts: datetime = Field(default_factory=utcnow, index=True)
+
+
+class AuditLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user: str = Field(index=True)
+    role: str = ""
+    action: str  # create|update|delete|sign|login|command|resolve...
+    entity: str = ""
+    entity_id: Optional[str] = None
+    details: str = ""
+    ts: datetime = Field(default_factory=utcnow, index=True)

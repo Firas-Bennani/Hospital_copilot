@@ -11,27 +11,80 @@ if str(DASHBOARD_DIR) not in sys.path:
 
 # Base de test isolée, auth active (les tests se connectent explicitement)
 _TEST_DB = DASHBOARD_DIR / "tests" / "_test_clinic.db"
-os.environ.setdefault("DATABASE_URL", f"sqlite:///{_TEST_DB.as_posix()}")
+os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB.as_posix()}"
 os.environ.setdefault("EMBEDDED_SIM", "0")
 os.environ.setdefault("MQTT_ENABLED", "0")
 os.environ.setdefault("LLM_PROVIDER", "mock")
-os.environ.setdefault("FOLLOWUP_RECHECK_S", "0.2")
+os.environ.setdefault("AUTH_REQUIRED", "1")
+os.environ.setdefault("DEMO_PASSWORD", "hackcure2026")
+os.environ.setdefault("FOLLOWUP_RECHECK_S", "0.3")
 os.environ.setdefault("ESCALATION_CRITICAL_S", "2")
+os.environ.setdefault("ESCALATION_HIGH_S", "3")
+os.environ.setdefault("ESCALATION_MEDIUM_S", "4")
+os.environ.setdefault("TELEGRAM_BOT_TOKEN", "")
+
+USERNAMES = {
+    "pharmacist": "pharmacien",
+    "receptionist": "receptionniste",
+    "nurse": "infirmier",
+    "duty_doctor": "medecin_garde",
+    "general_doctor": "medecin",
+    "owner": "owner",
+}
 
 
 @pytest.fixture(scope="session")
 def app():
-    if _TEST_DB.exists():
-        try:
-            _TEST_DB.unlink()
-        except OSError:
-            pass
+    for suffix in ("", "-wal", "-shm"):
+        p = Path(str(_TEST_DB) + suffix)
+        if p.exists():
+            try:
+                p.unlink()
+            except OSError:
+                pass
     from app.main import app as fastapi_app
     return fastapi_app
 
 
 @pytest.fixture(scope="session")
-def client(app):
+def server(app):
+    """Un seul cycle de vie (lifespan) pour toute la session de tests."""
     from fastapi.testclient import TestClient
     with TestClient(app) as c:
         yield c
+
+
+def _login(client, role: str):
+    client.cookies.clear()
+    r = client.post("/api/auth/login", json={"username": USERNAMES[role], "password": "hackcure2026"})
+    assert r.status_code == 200, r.text
+    client.cookies.set("hackcure_token", r.json()["token"])
+    return client
+
+
+@pytest.fixture()
+def anon_client(server):
+    from fastapi.testclient import TestClient
+    c = TestClient(server.app)
+    yield c
+
+
+@pytest.fixture()
+def client(server):
+    """Client connecté en propriétaire (tous les droits)."""
+    from fastapi.testclient import TestClient
+    c = TestClient(server.app)
+    _login(c, "owner")
+    yield c
+
+
+@pytest.fixture()
+def login(server):
+    """Fabrique : `login(role)` → client connecté avec ce rôle."""
+    from fastapi.testclient import TestClient
+
+    def _factory(role: str):
+        c = TestClient(server.app)
+        return _login(c, role)
+
+    return _factory

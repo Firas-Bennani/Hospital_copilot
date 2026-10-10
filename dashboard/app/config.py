@@ -57,7 +57,7 @@ class Settings:
         self.seed_on_startup = _bool("SEED_ON_STARTUP", True)
 
         # Auth
-        self.jwt_secret = os.getenv("JWT_SECRET", "hackcure-dev-secret-change-me")
+        self.jwt_secret = os.getenv("JWT_SECRET", "hackcure-dev-secret-change-me-before-production-0123456789")
         self.jwt_algorithm = "HS256"
         self.jwt_expire_minutes = _int("JWT_EXPIRE_MINUTES", 12 * 60)
         self.auth_required = _bool("AUTH_REQUIRED", True)
