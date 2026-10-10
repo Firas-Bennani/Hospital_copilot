@@ -32,13 +32,17 @@ const CommandView = (() => {
         if (!r) return '<div class="empty">Sélectionnez un risque dans la liste</div>';
         const steps = r.plan ? r.plan.steps.map(s => `<label><input type="checkbox" data-step="${s.id}" ${s.done ? 'checked' : ''} ${canManage() && r.status !== 'resolved' ? '' : 'disabled'}>
             <span class="${s.done ? 'done' : ''}">${s.order}. ${Api.esc(s.text)} ${s.suggested_by_ai ? '<span class="muted small">(IA)</span>' : ''}${s.done ? `<br><span class="muted small">✔ ${s.done_by} · ${Api.fmtDateTime(s.done_at)}</span>` : ''}</span></label>`).join('') : '<div class="muted">Plan en cours de rédaction par le RiskAgent…</div>';
-        return `<h3>#${r.id} · ${Api.esc(r.title)} <span class="tag tag-${r.severity}">${SEV_FR[r.severity]}</span> <span class="tag tag-${r.status}">${ST_FR[r.status]}</span></h3>
+        const origin = r.handled_by === 'n8n' ? '<span class="tag tag-n8n" title="Plan, Telegram, attente d\'acquittement et escalade orchestrés par n8n">orchestré par n8n</span>' : '<span class="tag" title="Agents Python locaux">agents locaux</span>';
+        const provider = r.plan ? r.plan.llm_provider : '';
+        const fallbackTag = /secours/i.test(provider) ? '<span class="tag tag-fallback">réponse de secours (LLM indisponible)</span>' : '';
+        return `<h3>#${r.id} · ${Api.esc(r.title)} <span class="tag tag-${r.severity}">${SEV_FR[r.severity]}</span> <span class="tag tag-${r.status}">${ST_FR[r.status]}</span> ${origin} ${fallbackTag}</h3>
             <div class="ai-hint">🧠 ${Api.esc(r.explanation)}<br><span class="muted">Suggestion IA — à valider par un soignant.</span></div>
             <h3>Plan d'action ${r.plan ? `<span class="muted small">(${r.plan.done_count}/${r.plan.total} · ${r.plan.llm_provider})</span>` : ''}</h3>
             <div class="checklist">${steps}</div>
             ${canManage() && r.status !== 'resolved' ? `<div class="inline-form" style="margin-top:10px"><input id="cmd-new-step" placeholder="Ajouter une étape…" style="flex:1"><button class="btn btn-sm" id="cmd-add-step">+ Ajouter</button></div>
             <div class="inline-form" style="margin-top:12px">
-                <button class="btn btn-success" id="cmd-resolve">✅ Marquer résolu (vérification FollowUpAgent)</button>
+                ${r.status !== 'in_progress' ? '<button class="btn btn-accent" id="cmd-ack">🙋 Je prends en charge</button>' : ''}
+                <button class="btn btn-success" id="cmd-resolve">✅ Marquer résolu (vérification ${r.handled_by === 'n8n' ? 'n8n risk-verify' : 'FollowUpAgent'})</button>
                 <button class="btn btn-warn" id="cmd-escalate">⬆️ Escalader au médecin</button>
             </div>` : ''}
             ${r.visits && r.visits.length ? `<h3>Visites</h3>${r.visits.map(v => `<div class="detail-row"><span class="detail-label">${Api.fmtTime(v.started_at)} → ${v.ended_at ? Api.fmtTime(v.ended_at) : 'en cours'}</span><span class="detail-value">${v.persons} pers.</span></div>`).join('')}` : ''}`;
@@ -89,6 +93,9 @@ const CommandView = (() => {
         plan.querySelector('#cmd-add-step')?.addEventListener('click', async () => {
             const inp = plan.querySelector('#cmd-new-step'); if (!inp.value.trim()) return;
             try { const d = await Api.post(`/api/risks/${r.id}/steps`, { text: inp.value.trim() }); merge(d); paint(); } catch (e) { Api.toast(e.message, 'critical'); }
+        });
+        plan.querySelector('#cmd-ack')?.addEventListener('click', async () => {
+            try { const d = await Api.post(`/api/risks/${r.id}/ack`); merge(d); paint(); Api.toast(d.n8n_resumed ? 'Prise en charge enregistrée — n8n informé (attente levée).' : 'Prise en charge enregistrée.', 'success'); } catch (e) { Api.toast(e.message, 'critical'); }
         });
         plan.querySelector('#cmd-resolve')?.addEventListener('click', async () => {
             try { const d = await Api.post(`/api/risks/${r.id}/resolve`); merge(d); paint(); Api.toast('Résolution demandée : le FollowUpAgent va re-vérifier la chambre.', 'success'); } catch (e) { Api.toast(e.message, 'critical'); }

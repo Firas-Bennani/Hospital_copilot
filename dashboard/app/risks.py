@@ -33,7 +33,7 @@ def risk_dict(session: Session, r: Risk, with_plan: bool = True) -> dict[str, An
         "id": r.id, "room": r.room_code, "admission_id": r.admission_id, "type": r.type, "type_label": TYPE_LABELS.get(r.type, r.type), "title": r.title,
         "severity": r.severity, "status": r.status, "source_agent": r.source_agent, "explanation": r.explanation, "news2": r.news2,
         "detected_at": _iso(r.detected_at), "acknowledged_at": _iso(r.acknowledged_at), "resolved_at": _iso(r.resolved_at), "verified_at": _iso(r.verified_at),
-        "escalated_at": _iso(r.escalated_at), "resolved_by": r.resolved_by, "notes": r.notes,
+        "escalated_at": _iso(r.escalated_at), "resolved_by": r.resolved_by, "notes": r.notes, "handled_by": r.handled_by,
         "patient_id": None, "patient_name": None,
     }
     if r.admission_id:
@@ -89,6 +89,46 @@ def patient_context(session: Session, room: str) -> dict[str, Any]:
         },
         "treatments": tr_txt,
         "treatment_list": [{"dci": m.dci, "brand": m.brand, "posology": t.posology, "route": t.route, "allergen_tags": m.allergen_tags} for t, m in treatments],
+    }
+
+
+def wait_seconds(severity: str) -> int:
+    """Délai d'acquittement avant escalade (critical 2 min, high 10, medium 30 ; raccourci en démo par ESCALATION_*_S)."""
+    from .config import settings
+
+    return int({"critical": settings.escalation_critical_s, "high": settings.escalation_high_s}.get(severity, settings.escalation_medium_s))
+
+
+def n8n_payload(session: Session, risk: Risk) -> dict[str, Any]:
+    """Événement complet envoyé à n8n : risque, patient (âge, allergies, traitements, risque de chute),
+    dernières constantes, état vision, personnel en service, URL de la plateforme."""
+    from .agents.context import current_news2
+    from .config import settings
+    from .models import Staff
+
+    ctx = patient_context(session, risk.room_code)
+    rs = handler.room_state(risk.room_code)
+    n2 = current_news2(risk.room_code)
+    staff = [{"name": s.name, "role": s.role, "room": s.current_room} for s in session.exec(select(Staff).where(Staff.on_duty.is_(True))).all()]
+    return {
+        "event": "risk-created",
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "platform_url": settings.platform_url,
+        "risk": risk_dict(session, risk, with_plan=False),
+        "wait_seconds": wait_seconds(risk.severity),
+        "llm_model": settings.llm_model,
+        "telegram_chat_id": settings.telegram_chat_id,
+        "patient": ctx.get("patient"),
+        "admission": ctx.get("admission"),
+        "treatments": ctx.get("treatment_list", []),
+        "treatments_text": ctx.get("treatments", ""),
+        "vitals": rs.get("vitals") or {},
+        "news2": n2.to_dict() if n2 else None,
+        "vision": {k: rs.get(k) for k in ("posture", "activity", "zone", "expression", "persons", "skinTempC", "confidence", "visionSource")},
+        "env": rs.get("env"),
+        "equipment": rs.get("equipment"),
+        "staff_on_duty": staff,
+        "nurse_present": bool(rs.get("staffPresent")),
     }
 
 

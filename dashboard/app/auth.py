@@ -126,8 +126,19 @@ def _token_from_request(request: Request) -> Optional[str]:
     return token
 
 
+SERVICE_USER = "n8n-service"
+
+
+def service_user_from_token(token: Optional[str]) -> Optional[CurrentUser]:
+    """Jeton de service (PLATFORM_SERVICE_TOKEN) : n8n appelle l'API avec le rôle owner."""
+    if token and settings.platform_service_token and token == settings.platform_service_token:
+        return CurrentUser(username=SERVICE_USER, role="owner", name="Service n8n", permissions=permissions_for("owner"))
+    return None
+
+
 def optional_user(request: Request) -> Optional[CurrentUser]:
-    user = user_from_token(_token_from_request(request))
+    token = _token_from_request(request)
+    user = service_user_from_token(token) or user_from_token(token)
     if user is None and not settings.auth_required:
         return CurrentUser(username="demo", role="owner", name="Mode sans authentification", permissions=permissions_for("owner"))
     return user

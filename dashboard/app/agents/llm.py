@@ -209,6 +209,32 @@ class AnthropicLlm(BaseLlm):
         return "".join(getattr(b, "text", "") for b in resp.content)
 
 
+FALLBACK_LABEL = "réponse de secours (LLM indisponible)"
+health: dict[str, Any] = {"status": "n/a", "detail": None, "checked_at": None}
+
+
+async def check_health() -> dict[str, Any]:
+    """Appel minimal pour vérifier la clé (`/health` → llm: ok | error | mock)."""
+    import time as _time
+
+    llm = get_llm()
+    if not isinstance(llm, AnthropicLlm):
+        health.update(status="mock", detail="LLM_PROVIDER=mock (ou clé absente)", checked_at=_time.time())
+        return health
+    try:
+        await llm.ensure_client()
+        await asyncio.wait_for(llm.client.messages.create(model=llm.model, max_tokens=5, messages=[{"role": "user", "content": "ping"}]), timeout=30)
+        health.update(status="ok", detail=f"{llm.model} répond", checked_at=_time.time())
+    except Exception as exc:
+        health.update(status="error", detail=f"{exc.__class__.__name__}: {str(exc)[:160]}", checked_at=_time.time())
+        logger.warning("Vérification LLM : %s", health["detail"])
+    return health
+
+
+async def start_health_check() -> list[asyncio.Task]:
+    return [asyncio.create_task(check_health(), name="llm-health")]
+
+
 _llm: Optional[BaseLlm] = None
 
 

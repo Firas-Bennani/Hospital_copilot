@@ -38,6 +38,11 @@ Le simulateur embarqué alimente les appareils des 4 chambres et les chambres vi
 | Edge Raspberry Pi | `python edge/main.py --fake --server http://localhost:8000` (PC) ; voir `MORNING_REPORT.md` pour le vrai Pi |
 | Webcam PC → 3D | `python dashboard/camera_loop.py --source 0` (poids YOLO requis) |
 
+## n8n (orchestration réelle)
+`npx n8n`, puis `.\n8n\import.ps1` (ou `./n8n/import.sh`) : crée les credentials et active les 4 workflows (`risk-triage`, `risk-verify`,
+`shift-report`, `pharmacy-alerts`). La plateforme leur délègue la réponse aux risques et reprend la main seule si n8n est arrêté.
+Voir `n8n/README.md`.
+
 ## Tests
 ```bash
 .venv/Scripts/python -m pytest dashboard/tests computer_vision/tests edge/tests simulator/tests -q

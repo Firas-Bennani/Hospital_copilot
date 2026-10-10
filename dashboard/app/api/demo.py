@@ -5,7 +5,7 @@ Restent accessibles sans authentification en mode démo (règle du prompt).
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -31,8 +31,43 @@ async def get_patients():
 
 
 @router.get("/api/events")
-async def get_events():
-    return JSONResponse(content=state.event_history[:50])
+async def get_events(request: Request, since: str | None = None, hours: int | None = None):
+    """Sans paramètre : historique legacy (50 derniers `patient_event`).
+    Avec `since` (ISO) ou `hours` : événements structurés (risques, postures, humeurs, visites) pour n8n `shift-report`."""
+    if since is None and hours is None:
+        return JSONResponse(content=state.event_history[:50])
+    from .. import auth as authlib
+
+    authlib.get_current_user(request)  # données cliniques : session ou jeton de service
+    from datetime import datetime, timedelta, timezone
+
+    from sqlmodel import select
+
+    from ..db import session_scope
+    from ..models import MoodObservation, PatientStateSnapshot, Risk, StaffVisit
+    from ..risks import risk_dict
+
+    try:
+        start = datetime.fromisoformat(since) if since else datetime.now(timezone.utc) - timedelta(hours=hours or 12)
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return JSONResponse(content={"error": "since invalide (ISO 8601)"}, status_code=400)
+    with session_scope() as s:
+        risks = [risk_dict(s, r, with_plan=True) for r in s.exec(select(Risk).where(Risk.detected_at >= start).order_by(Risk.detected_at)).all()]
+        snaps = s.exec(select(PatientStateSnapshot).where(PatientStateSnapshot.ts >= start).order_by(PatientStateSnapshot.ts)).all()
+        events, last = [], {}
+        for sn in snaps:
+            key = (sn.posture, sn.activity)
+            if last.get(sn.room_code) != key:
+                events.append({"ts": sn.ts.isoformat(), "room": sn.room_code, "posture": sn.posture, "activity": sn.activity, "persons": sn.persons})
+                last[sn.room_code] = key
+        moods = [{"ts": m.ts.isoformat(), "room": m.room_code, "mood": m.mood, "note": m.note} for m in s.exec(select(MoodObservation).where(MoodObservation.ts >= start).order_by(MoodObservation.ts)).all()]
+        visits = [{"room": v.room_code, "started_at": v.started_at.isoformat(), "ended_at": v.ended_at.isoformat() if v.ended_at else None, "persons": v.persons, "risk_id": v.risk_id} for v in s.exec(select(StaffVisit).where(StaffVisit.started_at >= start)).all()]
+    from ..ingest import handler
+
+    rooms = {r: {k: handler.room_state(r).get(k) for k in ("posture", "activity", "expression", "vitals", "env", "riskLevel", "patient_id", "skinTempC")} for r in handler.ROOMS}
+    return JSONResponse(content={"since": start.isoformat(), "risks": risks, "state_events": events, "moods": moods, "visits": visits, "rooms": rooms, "legacy_events": state.event_history[:50]}, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/api/demo/trigger")

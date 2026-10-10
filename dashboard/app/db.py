@@ -31,7 +31,27 @@ def init_db() -> None:
     from . import models  # noqa: F401 — enregistre les tables
 
     SQLModel.metadata.create_all(engine)
+    _migrate_columns()
     logger.info("Base initialisée (%s)", "sqlite" if settings.is_sqlite else "sql server")
+
+
+def _migrate_columns() -> None:
+    """Ajoute les colonnes apparues après la création d'une base existante (SQLite : ALTER TABLE ADD COLUMN)."""
+    if not settings.is_sqlite:
+        return
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    wanted = {"risk": [("handled_by", "VARCHAR DEFAULT 'local' NOT NULL"), ("n8n_resume_url", "VARCHAR")]}
+    with engine.begin() as conn:
+        for table, cols in wanted.items():
+            if table not in insp.get_table_names():
+                continue
+            existing = {c["name"] for c in insp.get_columns(table)}
+            for name, ddl in cols:
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+                    logger.info("Migration : colonne %s.%s ajoutée", table, name)
 
 
 def get_session() -> Iterator[Session]:

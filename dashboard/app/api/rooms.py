@@ -38,6 +38,25 @@ def room_states(_: authlib.CurrentUser = Depends(authlib.get_current_user)):
     return {r: handler.room_state(r) for r in handler.ROOMS}
 
 
+@router.get("/{code}/state")
+def get_room_state(code: str, _: authlib.CurrentUser = Depends(authlib.get_current_user)):
+    """État temps réel d'une chambre (room_state + constantes + risques ouverts) — utilisé par n8n `risk-verify`."""
+    if code not in handler.ROOMS:
+        raise HTTPException(404, "Chambre inconnue")
+    rs = dict(handler.room_state(code))
+    from ..db import session_scope
+    from ..risks import open_risks_in_room, risk_dict as _rd
+
+    from ..agents.followup import verify_risk
+
+    with session_scope() as s:
+        rs["open_risks"] = [_rd(s, r, with_plan=False) for r in open_risks_in_room(s, code)]
+    for r in rs["open_risks"]:
+        ok, detail = verify_risk(r["type"], rs)
+        r["auto_check"] = {"ok": ok, "detail": detail}
+    return rs
+
+
 @router.get("/{code}")
 def get_room(code: str, session: Session = Depends(get_session), _: authlib.CurrentUser = Depends(authlib.get_current_user)):
     room = session.exec(select(Room).where(Room.code == code)).first()

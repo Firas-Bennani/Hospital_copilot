@@ -86,6 +86,14 @@ class Settings:
         self.embedded_sim = _bool("EMBEDDED_SIM", True)
         self.sim_speed = _float("SIM_SPEED", 1.0)
 
+        # n8n (orchestration des actions) — repli sur les agents locaux si indisponible
+        self.n8n_enabled = _bool("N8N_ENABLED", False)
+        self.n8n_base_url = os.getenv("N8N_BASE_URL", "http://localhost:5678").rstrip("/")
+        self.n8n_webhook_secret = os.getenv("N8N_WEBHOOK_SECRET", "")
+        self.n8n_api_key = os.getenv("N8N_API_KEY", "")
+        self.platform_url = os.getenv("PLATFORM_URL", "http://localhost:8000").rstrip("/")
+        self.platform_service_token = os.getenv("PLATFORM_SERVICE_TOKEN", "")
+
         # Agents
         self.agents_enabled = _bool("AGENTS_ENABLED", True)
         # Délais FollowUp en secondes (valeurs « simulées » courtes pour la démo)

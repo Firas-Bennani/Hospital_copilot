@@ -147,6 +147,9 @@ class FollowUpAgent(Agent):
                 vid = visit.id
             for payload in changed:
                 await manager.broadcast({"type": "risk", "event": "in_progress", "risk": payload})
+            from .. import n8n
+
+            n8n.release_soon([c["id"] for c in changed], "personnel dans la chambre", acknowledged=True)
             await manager.broadcast({"type": "staff_visit", "room": room, "event": "visit_started", "visit_id": vid, "risk_ids": [c["id"] for c in changed]})
             await self.log(room, input=f"personnel détecté ({persons} personnes, source {source})",
                            reasoning=f"{len(risks)} risque(s) ouvert(s) dans la chambre → prise en charge en cours ; visite #{vid} enregistrée.",
@@ -161,14 +164,33 @@ class FollowUpAgent(Agent):
                     visit.ended_at = datetime.now(timezone.utc)
             risks = s.exec(select(Risk).where(Risk.room_code == room, Risk.status == "in_progress")).all()
             ids = [r.id for r in risks]
+            n8n_ids = [r.id for r in risks if r.handled_by == "n8n"]
+            payload_risks = [{"id": r.id, "type": r.type, "title": r.title, "severity": r.severity} for r in risks if r.handled_by == "n8n"]
+        delegated: list[int] = []
+        if n8n_ids:
+            from .. import n8n
+
+            if n8n.enabled() and await n8n.probe():
+                from ..risks import patient_context
+
+                with session_scope() as s:
+                    ctx = patient_context(s, room)
+                ok = await n8n.send_event("staff-left", {"event": "staff-left", "room": room, "risk_ids": n8n_ids, "risks": payload_risks, "patient": ctx.get("patient"),
+                                                         "duration_s": duration, "recheck_seconds": int(settings.followup_recheck_s), "llm_model": settings.llm_model,
+                                                         "telegram_chat_id": settings.telegram_chat_id, "platform_url": settings.platform_url, "ts": datetime.now(timezone.utc).isoformat()})
+                if ok:
+                    delegated = n8n_ids
         due = time.time() + settings.followup_recheck_s
         for rid in ids:
-            self.pending[rid] = (due, "sortie du personnel")
+            if rid not in delegated:
+                self.pending[rid] = (due, "sortie du personnel")
         await manager.broadcast({"type": "staff_visit", "room": room, "event": "visit_ended", "visit_id": vid, "durationSec": duration})
         if ids or vid:
+            local = [i for i in ids if i not in delegated]
             await self.log(room, input=f"sortie du personnel (durée {duration or '?'} s, source {source})",
-                           reasoning=f"Fin de visite #{vid}. Re-vérification de {len(ids)} risque(s) dans {settings.followup_recheck_s:.0f} s (délai simulé de 2 min).",
-                           output=", ".join(f"#{i}" for i in ids) or "aucun risque à re-vérifier", risk_id=ids[0] if ids else None)
+                           reasoning=f"Fin de visite #{vid}. " + (f"Re-vérification de {len(delegated)} risque(s) déléguée à n8n (workflow risk-verify : attente 2 min, état réel, Claude). " if delegated else "")
+                                     + (f"Re-vérification locale de {len(local)} risque(s) dans {settings.followup_recheck_s:.0f} s." if local else ""),
+                           output=", ".join(f"#{i}{' (n8n)' if i in delegated else ''}" for i in ids) or "aucun risque à re-vérifier", risk_id=ids[0] if ids else None)
 
     async def on_tick(self) -> None:
         now = time.time()
@@ -227,8 +249,8 @@ class FollowUpAgent(Agent):
         with session_scope() as s:
             for risk in s.exec(select(Risk).where(Risk.status == "open")).all():
                 limit = delays.get(risk.severity)
-                if limit is None or risk.escalated_at is not None:
-                    continue
+                if limit is None or risk.escalated_at is not None or risk.handled_by == "n8n":
+                    continue  # les risques orchestrés par n8n sont escaladés par le nœud Wait du workflow
                 det = risk.detected_at if risk.detected_at.tzinfo else risk.detected_at.replace(tzinfo=timezone.utc)
                 if (now - det).total_seconds() >= limit and not self.staff_in.get(risk.room_code):
                     risk.status = "escalated"

@@ -63,8 +63,10 @@ async def lifespan(app: FastAPI):
 
     for mod_name, starter in (
         (".ingest.mqtt", "start"),
+        (".n8n", "start"),
         (".sim.embedded", "start"),
         (".agents.manager", "start"),
+        (".agents.llm", "start_health_check"),
     ):
         mod = _import_optional(mod_name)
         if mod is not None and hasattr(mod, starter):
@@ -120,6 +122,7 @@ def create_app() -> FastAPI:
         "kpi",
         "camera",
         "edge",
+        "n8n",
         "print",
     ):
         mod = _import_optional(f".api.{name}")
@@ -174,7 +177,11 @@ def create_app() -> FastAPI:
                 "mode": state.current_mode["mode"],
                 "ws_clients": manager.count,
                 "llm_provider": settings.llm_provider,
+                "llm_model": settings.llm_model,
+                "llm": getattr(_import_optional(".agents.llm"), "health", {}).get("status", "n/a"),
+                "llm_detail": getattr(_import_optional(".agents.llm"), "health", {}).get("detail"),
                 "mqtt": getattr(_import_optional(".ingest.mqtt"), "status", lambda: "disabled")(),
+                "n8n": getattr(_import_optional(".n8n"), "status", lambda: "disabled")(),
                 "telegram": settings.telegram_enabled,
             }
         )

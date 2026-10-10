@@ -142,6 +142,8 @@ class Risk(SQLModel, table=True):
     escalated_at: Optional[datetime] = None
     resolved_by: Optional[str] = None
     notes: str = ""
+    handled_by: str = "local"  # local | n8n
+    n8n_resume_url: Optional[str] = None  # URL de reprise du nœud Wait (acquittement « Je prends en charge »)
 
 
 class ActionPlan(SQLModel, table=True):

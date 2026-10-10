@@ -20,6 +20,7 @@ fi
 [ -f .env ] || cp .env.example .env
 [ "$RESET" = "1" ] && rm -f dashboard/clinic.db dashboard/clinic.db-wal dashboard/clinic.db-shm
 export EMBEDDED_SIM=1 FOLLOWUP_RECHECK_S=30 ESCALATION_CRITICAL_S=120
+export PLATFORM_URL="http://localhost:$PORT"   # URL que n8n rappelle (plan, escalade, résolution)
 echo
 echo "=== Hospital Copilot — démo ==="
 echo "Tableau de bord : http://localhost:$PORT   (owner / hackcure2026)"

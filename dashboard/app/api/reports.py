@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
@@ -142,7 +143,15 @@ def get_shift_report(report_id: int, session: Session = Depends(get_session), _:
 
 
 @router.post("/api/shift-reports/generate", status_code=201)
-async def generate_shift(body: ShiftGenerateIn, session: Session = Depends(get_session), user: authlib.CurrentUser = Depends(authlib.require("edit_shift_report"))):
+async def generate_shift(body: ShiftGenerateIn, local: bool = False, session: Session = Depends(get_session), user: authlib.CurrentUser = Depends(authlib.require("edit_shift_report"))):
+    from .. import n8n
+
+    if not local and n8n.enabled() and await n8n.probe():
+        ok = await n8n.send_event("shift-report", {"event": "shift-report", "hours": body.hours, "triggered_by": user.username, "platform_url": n8n.settings.platform_url, "llm_model": n8n.settings.llm_model, "telegram_chat_id": n8n.settings.telegram_chat_id, "ts": datetime.now(timezone.utc).isoformat()})
+        if ok:
+            audit(session, user, "generate_n8n", "shift_report", None, {"hours": body.hours})
+            session.commit()
+            return JSONResponse(status_code=202, content={"status": "n8n", "message": "Rapport en cours de rédaction par n8n (workflow shift-report) ; il apparaîtra dans la liste."})
     end = datetime.now(timezone.utc)
     start = end - timedelta(hours=max(1, min(body.hours, 48)))
     rid = await agent_manager.report_agent().generate_shift_report(start, end, author=f"ReportAgent (demandé par {user.username})")

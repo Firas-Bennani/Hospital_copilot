@@ -82,7 +82,9 @@ class ReportAgent(Agent):
                 from .llm import MockLlm
 
                 md = MockLlm()._shift_report(ctx)
-                provider = f"{provider} → secours mock"
+                from .llm import FALLBACK_LABEL
+
+                provider = FALLBACK_LABEL if provider != "mock" else "mock"
             with session_scope() as s:
                 rep = ShiftReport(shift_start=start, shift_end=end, author=author, content=md, status="draft")
                 s.add(rep)
@@ -122,7 +124,9 @@ class ReportAgent(Agent):
                 from .llm import MockLlm
 
                 content = MockLlm()._medical_report(context)
-                provider = f"{provider} → secours mock"
+                from .llm import FALLBACK_LABEL
+
+                provider = FALLBACK_LABEL if provider != "mock" else "mock"
             with session_scope() as s:
                 rep = MedicalReport(admission_id=admission_id, author=author, title="Compte rendu médical (brouillon IA)", content=content, status="draft", ai_draft=True)
                 s.add(rep)

@@ -100,15 +100,39 @@ class RiskAgent(Agent):
                 refresh_room_level(s, room)
                 payload = risk_dict(s, risk)
                 treatments = ctx.get("treatments", "")
-            # 1) le risque existe : diffusion + notification immédiates (avant le LLM)
+            # 1) le risque existe : diffusion immédiate (avant le LLM)
             await manager.broadcast({"type": "risk", "event": "created", "risk": payload})
             await bus.publish("internal/risk/created", {"risk_id": rid, "room": room, "type": rtype, "severity": severity})
-            await self.notify_for(rid, room, rtype, severity, payload["explanation"], patient)
+            # 2) orchestration : n8n (risk-triage) si joignable, sinon agents locaux
+            delegated = await self.delegate_to_n8n(rid, room)
+            await self.notify_for(rid, room, rtype, severity, payload["explanation"], patient, telegram=not delegated)
             await self.log(room, input=f"candidat {rtype} ({c.get('source_agent')}) : {json.dumps(details, ensure_ascii=False)[:300]}",
-                           reasoning=f"Règles déterministes → sévérité {severity}" + (f" ; NEWS2 {details.get('news2')}" if details.get("news2") is not None else "") + f" ; patient {patient.get('full_name', '?')} (risque de chute {patient.get('fall_risk', '?')}). Risque créé d'abord, enrichi ensuite par le LLM.",
-                           output=f"risque #{rid} « {title} » [{severity}] créé, notifications envoyées", risk_id=rid, duration_ms=sw.ms)
-        # 2) enrichissement LLM (explication + plan), hors du statut « thinking » initial
+                           reasoning=f"Règles déterministes → sévérité {severity}" + (f" ; NEWS2 {details.get('news2')}" if details.get("news2") is not None else "") + f" ; patient {patient.get('full_name', '?')} (risque de chute {patient.get('fall_risk', '?')}). "
+                                     + ("Risque délégué à n8n (workflow risk-triage : plan Claude, Telegram, attente d'acquittement, escalade)." if delegated else "n8n indisponible ou désactivé : traitement local (LLM + notifications + escalade par le FollowUpAgent)."),
+                           output=f"risque #{rid} « {title} » [{severity}] créé — " + ("orchestré par n8n" if delegated else "agents locaux"), risk_id=rid, duration_ms=sw.ms)
+        if delegated:
+            return
+        # 3) enrichissement LLM local (explication + plan)
         await self.enrich(rid, room, rtype, severity, details, patient, treatments)
+
+    async def delegate_to_n8n(self, rid: int, room: str) -> bool:
+        from .. import n8n
+        from ..risks import n8n_payload
+
+        if not n8n.enabled() or not await n8n.probe():
+            return False
+        with session_scope() as s:
+            risk = s.get(Risk, rid)
+            if not risk:
+                return False
+            payload = n8n_payload(s, risk)
+        ok = await n8n.send_event("risk-created", payload)
+        if ok:
+            with session_scope() as s:
+                risk = s.get(Risk, rid)
+                if risk:
+                    risk.handled_by = "n8n"
+        return ok
 
     @staticmethod
     def deterministic_explanation(rtype: str, severity: str, details: dict[str, Any], patient: dict[str, Any]) -> str:
@@ -116,15 +140,16 @@ class RiskAgent(Agent):
         who = f"{patient.get('full_name')} ({patient.get('age')} ans)" if patient else "patient inconnu"
         return f"{TYPE_LABELS.get(rtype, rtype)} [{SEV_LABEL[severity]}] pour {who}. Valeurs observées : {vals or 'n/a'}. Analyse détaillée en cours."
 
-    async def notify_for(self, rid: int, room: str, rtype: str, severity: str, explanation: str, patient: dict[str, Any]) -> None:
+    async def notify_for(self, rid: int, room: str, rtype: str, severity: str, explanation: str, patient: dict[str, Any], telegram: bool = True) -> None:
+        """In-app toujours ; Telegram seulement si n8n ne s'en charge pas."""
         if severity == "low":
             return
         label = TYPE_LABELS.get(rtype, rtype)
         title = f"[{SEV_LABEL[severity]}] {label} — chambre {room}"
         body = f"{patient.get('full_name', 'Patient')} · {explanation[:220]}"
-        await notify(NOTIF_LEVEL[severity], title, body, room=room, risk_id=rid, target_role="nurse")
+        await notify(NOTIF_LEVEL[severity], title, body, room=room, risk_id=rid, target_role="nurse", telegram=telegram)
         if severity in ("high", "critical"):
-            await notify(NOTIF_LEVEL[severity], f"Médecin de garde — {title}", body, room=room, risk_id=rid, target_role="duty_doctor")
+            await notify(NOTIF_LEVEL[severity], f"Médecin de garde — {title}", body, room=room, risk_id=rid, target_role="duty_doctor", telegram=telegram)
 
     async def enrich(self, rid: int, room: str, rtype: str, severity: str, details: dict[str, Any], patient: dict[str, Any], treatments: str) -> None:
         from ..risks import risk_dict
@@ -145,9 +170,12 @@ class RiskAgent(Agent):
             if result and isinstance(result.get("steps"), list):
                 steps = [{"text": str(st.get("text") if isinstance(st, dict) else st)} for st in result["steps"] if (st.get("text") if isinstance(st, dict) else st)]
                 explanation = str(result.get("explanation") or "").strip() or None
-            if not 3 <= len(steps) <= 6:
+            fallback = not 3 <= len(steps) <= 6
+            if fallback:
+                from .llm import FALLBACK_LABEL
+
                 steps = [dict(x) for x in FALLBACK_PLANS.get(rtype, FALLBACK_PLANS["default"])][:6]
-                provider = f"{provider} (plan de secours)"
+                provider = FALLBACK_LABEL if provider != "mock" else "mock"
             with session_scope() as s:
                 risk = s.get(Risk, rid)
                 if not risk:
@@ -163,7 +191,8 @@ class RiskAgent(Agent):
                 payload = risk_dict(s, risk)
             await manager.broadcast({"type": "risk", "event": "updated", "risk": payload})
             await self.log(room, input=f"contexte LLM : {json.dumps({k: context[k] for k in ('risk_type', 'severity', 'vitals', 'news2')}, ensure_ascii=False, default=str)[:400]}",
-                           reasoning=f"LLM {provider} : explication citant les valeurs mesurées, allergies ({patient.get('allergies') or 'aucune'}) et traitements respectés ; plan de {len(steps)} étapes à valider par un soignant.",
+                           reasoning=(f"{provider.upper()} : plan prédéfini par type de risque, explication déterministe conservée." if fallback else f"LLM {provider} : explication citant les valeurs mesurées, allergies ({patient.get('allergies') or 'aucune'}) et traitements respectés ; plan de {len(steps)} étapes à valider par un soignant."),
+                           status="ok" if not fallback else "error",
                            output=(explanation or payload["explanation"])[:300] + f" | {len(steps)} étapes", risk_id=rid, duration_ms=sw.ms)
 
     # ── levée automatique (valeurs normalisées) ─────────────────────────────
@@ -189,4 +218,8 @@ class RiskAgent(Agent):
                 refresh_room_level(s, room)
         for payload in changed:
             await manager.broadcast({"type": "risk", "event": "resolved", "risk": payload})
+        if changed:
+            from .. import n8n
+
+            n8n.release_soon([p["id"] for p in changed], "signal normalisé (levée automatique)")
             await self.log(room, input=f"levée : {payload['type']} — {reason}", reasoning="Le signal est revenu dans les limites avant toute prise en charge : risque ouvert clôturé automatiquement (jamais pour un risque critique ou déjà pris en charge).", output=f"risque #{payload['id']} résolu", risk_id=payload["id"])

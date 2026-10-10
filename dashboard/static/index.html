@@ -50,6 +50,8 @@
                 <button id="notif-bell" class="icon-btn" title="Notifications">🔔<span id="notif-badge" class="notif-badge" data-count="0"></span></button>
                 <div id="notif-dropdown" class="hidden"></div>
             </div>
+            <div id="n8n-status" class="n8n-badge n8n-disabled" title="Orchestration n8n"><span class="status-dot"></span><span class="n8n-text">n8n</span></div>
+            <a id="btn-open-n8n" class="btn btn-sm hidden" href="http://localhost:5678" target="_blank" rel="noopener" title="Ouvrir n8n dans un nouvel onglet">🔗 Ouvrir n8n</a>
             <div id="connection-status" class="status-disconnected">
                 <span class="status-dot"></span>
                 <span class="status-text">Déconnecté</span>
@@ -221,6 +223,7 @@
     <script src="/static/js/equipment.js"></script>
     <script src="/static/js/room-live.js"></script>
     <script src="/static/js/kpi-bar.js"></script>
+    <script src="/static/js/n8n-status.js"></script>
     <script src="/static/js/agents-panel.js"></script>
     <script src="/static/js/notifications.js"></script>
     <script src="/static/js/demo-launcher.js"></script>

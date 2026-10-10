@@ -105,15 +105,40 @@ async def patch_risk(risk_id: int, body: RiskPatch, session: Session = Depends(g
     return payload
 
 
+class ResolveIn(BaseModel):
+    verified: bool = False
+    justification: str = ""
+    source: str = "n8n:risk-verify"
+
+
 @router.post("/{risk_id}/resolve")
-async def request_resolution(risk_id: int, session: Session = Depends(get_session), user: authlib.CurrentUser = Depends(authlib.can_manage_risks)):
-    """« Marquer résolu » : passe en cours et déclenche la vérification différée du FollowUpAgent."""
+async def request_resolution(risk_id: int, body: Optional[ResolveIn] = None, session: Session = Depends(get_session), user: authlib.CurrentUser = Depends(authlib.can_manage_risks)):
+    """« Marquer résolu » : passe en cours et déclenche la vérification différée du FollowUpAgent.
+    Avec `{"verified": true, "justification": ...}` (n8n `risk-verify`) : résolution vérifiée immédiate."""
     r = session.get(Risk, risk_id)
     if not r:
         raise HTTPException(404, "Risque introuvable")
     if r.status == "resolved":
         return risk_dict(session, r)
     now = datetime.now(timezone.utc)
+    if body and body.verified:
+        r.status = "resolved"
+        r.resolved_at = now
+        r.verified_at = now
+        r.resolved_by = f"{body.source} (vérifié) — {body.justification[:160]}" if body.justification else f"{body.source} (vérifié)"
+        audit(session, user, "resolve_verified", "risk", risk_id, {"source": body.source})
+        session.commit()
+        session.refresh(r)
+        refresh_room_level(session, r.room_code)
+        payload = risk_dict(session, r)
+        await manager.broadcast({"type": "risk", "event": "resolved", "risk": payload})
+        from .. import n8n
+        from ..notify import notify
+
+        n8n.release_soon([risk_id], "risque résolu")
+
+        await notify("info", f"Résolu — {r.title}", body.justification or "Vérifié par n8n.", room=r.room_code, risk_id=risk_id, target_role="nurse", telegram=False)
+        return payload
     r.status = "in_progress"
     r.acknowledged_at = r.acknowledged_at or now
     r.notes = (r.notes + "\n" if r.notes else "") + f"{now.strftime('%H:%M:%S')} résolution demandée par {user.username} (vérification FollowUpAgent)"

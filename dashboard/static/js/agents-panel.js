@@ -4,8 +4,14 @@
  */
 const AgentsPanel = (() => {
     'use strict';
-    const ICONS = { VisionAgent: '👁️', VitalsAgent: '💓', EnvironmentAgent: '🌡️', RiskAgent: '🛡️', FollowUpAgent: '🔁', ReportAgent: '📝' };
-    const STATUS_FR = { idle: 'en veille', thinking: 'analyse…', acting: 'action…' };
+    const ICONS = { VisionAgent: '👁️', VitalsAgent: '💓', EnvironmentAgent: '🌡️', RiskAgent: '🛡️', FollowUpAgent: '🔁', ReportAgent: '📝', 'n8n:risk-triage': '🔗', 'n8n:risk-verify': '🔗', 'n8n:shift-report': '🔗', 'n8n:pharmacy-alerts': '🔗' };
+    const N8N_WORKFLOWS = [
+        { name: 'n8n:risk-triage', description: 'Webhook risk-created → Claude (explication + plan) → plan sur la plateforme → Telegram infirmier → attente d\'acquittement → escalade.' },
+        { name: 'n8n:risk-verify', description: 'Webhook staff-left → attente 2 min → état réel de la chambre → Claude → résolu ou persistant → Telegram.' },
+        { name: 'n8n:shift-report', description: 'Cron 07:45 / 19:45 + bouton → événements, risques, humeurs → Claude → rapport de garde → Telegram.' },
+        { name: 'n8n:pharmacy-alerts', description: 'Cron quotidien + bouton → stock sous seuil, péremption < 30 j → Telegram pharmacien.' },
+    ];
+    const STATUS_FR = { idle: 'en veille', thinking: 'analyse…', acting: 'action…', offline: 'n8n hors ligne' };
     const MAX_FEED = 60;
     let agents = [];
     let feed = [];
@@ -59,7 +65,9 @@ const AgentsPanel = (() => {
 
     function onLog(m) {
         feed.unshift(m); if (feed.length > 200) feed.length = 200;
-        const a = agents.find(x => x.name === m.agent); if (a) { a.last_run = m.ts; a.runs = (a.runs || 0) + 1; }
+        let a = agents.find(x => x.name === m.agent);
+        if (!a && m.agent && m.agent.startsWith('n8n:')) { a = { name: m.agent, description: 'Workflow n8n', status: 'idle', last_run: null, runs: 0, errors: 0 }; agents.push(a); renderCards(); }
+        if (a) { a.last_run = m.ts; a.runs = (a.runs || 0) + 1; }
         const card = document.getElementById(`agent-card-${m.agent}`);
         if (card) { card.querySelector('[data-last]').textContent = Api.fmtTime(m.ts); if (a) card.querySelector('[data-runs]').textContent = a.runs; }
         if ((!filters.agent || m.agent === filters.agent) && (!filters.room || m.room === filters.room)) {
@@ -75,6 +83,10 @@ const AgentsPanel = (() => {
         try {
             const info = await Api.get('/api/agents', { noRedirect: true });
             agents = info.agents || [];
+            if (info.n8n && info.n8n.enabled) {
+                const seen = info.n8n.workflows || {};
+                N8N_WORKFLOWS.forEach(w => agents.push({ name: w.name, description: w.description, status: info.n8n.status === 'online' ? 'idle' : 'offline', last_run: (seen[w.name] || {}).last_run || null, runs: (seen[w.name] || {}).runs || 0, errors: 0 }));
+            }
             const sel = document.getElementById('agent-filter-agent');
             if (sel) { sel.innerHTML = '<option value="">Tous les agents</option>' + agents.map(a => `<option value="${a.name}">${a.name}</option>`).join(''); }
             const rsel = document.getElementById('agent-filter-room');

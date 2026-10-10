@@ -5,9 +5,10 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func
 from sqlmodel import Session, select
 
-from .. import auth as authlib
+from .. import auth as authlib, n8n
 from ..agents import manager as agent_manager
 from ..config import settings
 from ..db import get_session
@@ -17,8 +18,11 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 
 
 @router.get("")
-def list_agents(_: authlib.CurrentUser = Depends(authlib.get_current_user)):
-    return {"agents": agent_manager.infos(), "llm_provider": settings.llm_provider, "llm_model": settings.llm_model, "enabled": settings.agents_enabled}
+def list_agents(session: Session = Depends(get_session), _: authlib.CurrentUser = Depends(authlib.get_current_user)):
+    # activité des workflows n8n (étapes reçues sur POST /api/agents/log) pour leurs cartes du panneau Agents
+    rows = session.exec(select(AgentLog.agent, func.count(), func.max(AgentLog.ts)).where(AgentLog.agent.like("n8n:%")).group_by(AgentLog.agent)).all()
+    workflows = {name: {"runs": runs, "last_run": last.isoformat() if hasattr(last, "isoformat") else last} for name, runs, last in rows}
+    return {"agents": agent_manager.infos(), "llm_provider": settings.llm_provider, "llm_model": settings.llm_model, "enabled": settings.agents_enabled, "n8n": {**n8n.info(), "workflows": workflows}}
 
 
 @router.get("/logs")

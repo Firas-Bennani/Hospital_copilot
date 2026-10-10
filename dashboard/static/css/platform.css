@@ -80,6 +80,16 @@ body.login-page {
 #demo-menu .demo-desc { display: block; color: var(--text-muted); font-size: 11px; margin-top: 2px; }
 .top-anchor { position: relative; }
 
+/* ─── n8n ──────────────────────────────────────────────── */
+.n8n-badge { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border-subtle); background: var(--bg-card); font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+.n8n-badge .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+.n8n-badge.n8n-online .status-dot { background: #ea4b71; box-shadow: 0 0 8px rgba(234,75,113,.7); }
+.n8n-badge.n8n-online { color: #fda4af; border-color: rgba(234,75,113,.4); }
+.n8n-badge.n8n-offline .status-dot { background: var(--status-warning); }
+.hidden { display: none !important; }
+.tag-n8n { background: rgba(234,75,113,.18); color: #fda4af; }
+.tag-fallback { background: rgba(245,158,11,.2); color: #fde68a; }
+
 /* ─── Navigation du panneau gauche ─────────────────────── */
 #main-nav { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 8px 8px 6px; border-bottom: 1px solid var(--border-subtle); flex: 0 0 auto; }
 .nav-btn {

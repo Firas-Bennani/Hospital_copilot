@@ -75,9 +75,9 @@ def list_medications(q: Optional[str] = None, session: Session = Depends(get_ses
 
 
 @router.get("/alerts")
-def alerts(session: Session = Depends(get_session), _: authlib.CurrentUser = Depends(authlib.require("view_pharmacy"))):
+def alerts(days: int = 60, session: Session = Depends(get_session), _: authlib.CurrentUser = Depends(authlib.require("view_pharmacy"))):
     rows = session.exec(select(Medication)).all()
-    return {"low_stock": [med_out(m) for m in rows if m.low_stock], "expiring": [med_out(m) for m in rows if m.expiring_within(60)]}
+    return {"days": days, "low_stock": [med_out(m) for m in rows if m.low_stock], "expiring": [med_out(m) for m in rows if m.expiring_within(days)]}
 
 
 @router.post("/medications", status_code=201)

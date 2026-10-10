@@ -19,6 +19,7 @@ if ($Reset) { Remove-Item -Force -ErrorAction SilentlyContinue "dashboard\clinic
 $env:EMBEDDED_SIM = "1"
 $env:FOLLOWUP_RECHECK_S = "30"      # re-vérification 30 s après la sortie de l'infirmier (démo)
 $env:ESCALATION_CRITICAL_S = "120"
+$env:PLATFORM_URL = "http://localhost:$Port"   # URL que n8n rappelle (plan, escalade, resolution)
 
 Write-Host "`n=== Hospital Copilot — démo ===" -ForegroundColor Cyan
 Write-Host "Tableau de bord : http://localhost:$Port   (owner / hackcure2026, voir .env.example pour les autres rôles)"

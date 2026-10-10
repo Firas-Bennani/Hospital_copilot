@@ -26,7 +26,11 @@
             <div class="grid-2" style="grid-template-columns: 0.7fr 1.8fr; align-items:start"><div class="card"><h3>Rapports (${reports.length})</h3><div id="sh-list"></div></div><div class="card" id="sh-editor"></div></div>`;
         el.querySelector('#sh-gen')?.addEventListener('click', async () => {
             const b = el.querySelector('#sh-gen'); b.disabled = true; b.textContent = '🤖 Rédaction…';
-            try { const r = await Api.post('/api/shift-reports/generate', { hours: Number(el.querySelector('#sh-hours').value) }); current = r.id; Api.toast('Rapport de garde généré (brouillon)', 'success'); render(el); } catch (e) { Api.toast(e.message, 'critical'); b.disabled = false; b.textContent = '🤖 Générer le rapport de garde'; }
+            try {
+                const r = await Api.post('/api/shift-reports/generate', { hours: Number(el.querySelector('#sh-hours').value) });
+                if (r && r.status === 'n8n') { Api.toast('n8n rédige le rapport de garde (workflow shift-report)… il apparaîtra dans la liste.', 'info'); b.textContent = '⏳ n8n rédige…'; return; }
+                current = r.id; Api.toast('Rapport de garde généré (brouillon)', 'success'); render(el);
+            } catch (e) { Api.toast(e.message, 'critical'); b.disabled = false; b.textContent = '🤖 Générer le rapport de garde'; }
         });
         if (!current && reports.length) current = reports[0].id;
         paint();
@@ -50,5 +54,6 @@
         ed.querySelector('#sh-validate')?.addEventListener('click', async () => { try { await Api.patch(`/api/shift-reports/${r.id}`, { content: ed.querySelector('#sh-content').value }); const d = await Api.post(`/api/shift-reports/${r.id}/validate`); Object.assign(r, d); Api.toast('Rapport validé', 'success'); paint(); } catch (e) { Api.toast(e.message, 'critical'); } });
     }
 
+    window.addEventListener('hackcure:ws', (e) => { if (mounted && host && e.detail.type === 'shift_report') { current = e.detail.id; Api.toast('Rapport de garde reçu de n8n', 'success'); render(host); } });
     Views.register('shift', { title: 'Rapport de garde', perm: 'view_shift_report', mount(el) { mounted = true; render(el); }, unmount() { mounted = false; } });
 })();
