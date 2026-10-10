@@ -55,10 +55,10 @@ def extract_json(text: str) -> Optional[dict[str, Any]]:
 class BaseLlm:
     name = "base"
 
-    async def complete_text(self, system: str, user: str, max_tokens: int = 800) -> Optional[str]:  # pragma: no cover
+    async def complete_text(self, system: str, user: str, max_tokens: int = 1400) -> Optional[str]:  # pragma: no cover
         raise NotImplementedError
 
-    async def complete_json(self, system: str, user: str, max_tokens: int = 800) -> Optional[dict[str, Any]]:
+    async def complete_json(self, system: str, user: str, max_tokens: int = 1400) -> Optional[dict[str, Any]]:
         try:
             text = await asyncio.wait_for(self.complete_text(system, user, max_tokens), timeout=settings.llm_timeout_s)
         except asyncio.TimeoutError:
@@ -67,7 +67,10 @@ class BaseLlm:
         except Exception as exc:
             logger.warning("LLM %s : erreur %s", self.name, exc.__class__.__name__)
             return None
-        return extract_json(text or "")
+        data = extract_json(text or "")
+        if data is None:
+            logger.warning("LLM %s : reponse non analysable (JSON absent ou tronque, %d caracteres) -> plan de secours", self.name, len(text or ""))
+        return data
 
 
 class MockLlm(BaseLlm):
@@ -75,7 +78,7 @@ class MockLlm(BaseLlm):
 
     name = "mock"
 
-    async def complete_text(self, system: str, user: str, max_tokens: int = 800) -> Optional[str]:
+    async def complete_text(self, system: str, user: str, max_tokens: int = 1400) -> Optional[str]:
         ctx = extract_json(user) or {}
         task = ctx.get("task", "")
         if task == "risk_plan":
@@ -176,15 +179,29 @@ class MockLlm(BaseLlm):
 
 
 class AnthropicLlm(BaseLlm):
+    """Le SDK (import lourd) est chargé dans un thread à la première utilisation pour ne jamais bloquer la boucle asyncio."""
+
     name = "anthropic"
 
     def __init__(self) -> None:
+        self.client = None
+        self.model = settings.llm_model
+        self._lock = asyncio.Lock()
+
+    def _build_client(self):
         import anthropic
 
-        self.client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-        self.model = settings.llm_model
+        return anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
-    async def complete_text(self, system: str, user: str, max_tokens: int = 800) -> Optional[str]:
+    async def ensure_client(self) -> None:
+        if self.client is None:
+            async with self._lock:
+                if self.client is None:
+                    self.client = await asyncio.to_thread(self._build_client)
+                    logger.info("Client Anthropic prêt (%s)", self.model)
+
+    async def complete_text(self, system: str, user: str, max_tokens: int = 1400) -> Optional[str]:
+        await self.ensure_client()
         resp = await self.client.messages.create(
             model=self.model, max_tokens=max_tokens, system=system,
             messages=[{"role": "user", "content": user}],
@@ -199,12 +216,8 @@ def get_llm() -> BaseLlm:
     global _llm
     if _llm is None:
         if settings.llm_provider == "anthropic" and settings.anthropic_api_key:
-            try:
-                _llm = AnthropicLlm()
-                logger.info("LLM Anthropic (%s)", settings.llm_model)
-            except Exception as exc:
-                logger.warning("SDK anthropic indisponible (%s) → mock", exc)
-                _llm = MockLlm()
+            _llm = AnthropicLlm()
+            logger.info("LLM Anthropic (%s) — client chargé en arrière-plan", settings.llm_model)
         else:
             _llm = MockLlm()
     return _llm

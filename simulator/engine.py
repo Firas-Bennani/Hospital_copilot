@@ -394,7 +394,8 @@ class SimEngine:
         if real_dt is None:
             real_dt = now_real - self.last_real
         self.last_real = now_real
-        dt = max(0.0, real_dt) * self.speed
+        # un blocage de la boucle (import lourd, pause machine) ne doit jamais faire « sauter » un scénario
+        dt = min(max(0.0, real_dt), 2.0) * self.speed
         self.sim_time += dt
         self._run_scenario_steps()
         n = 0

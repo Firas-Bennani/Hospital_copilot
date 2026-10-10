@@ -68,7 +68,7 @@ class Settings:
         self.llm_provider = os.getenv("LLM_PROVIDER", "mock").lower()
         self.llm_model = os.getenv("LLM_MODEL", "claude-sonnet-5-5")
         self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "")
-        self.llm_timeout_s = _float("LLM_TIMEOUT_S", 20.0)
+        self.llm_timeout_s = _float("LLM_TIMEOUT_S", 45.0)
         if self.llm_provider == "anthropic" and not self.anthropic_api_key:
             self.llm_provider = "mock"
 

@@ -25,6 +25,9 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("hackcure.server")
+# httpx journalise les URL complètes (jeton Telegram dans le chemin) : on le limite aux avertissements
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 _background_tasks: list[asyncio.Task] = []
 

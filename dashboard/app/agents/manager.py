@@ -30,6 +30,12 @@ async def start() -> list[asyncio.Task]:
         agents[a.name] = a
         tasks.append(a.start())
     logger.info("Agents démarrés : %s", ", ".join(agents))
+    # préchauffage du client LLM (import du SDK dans un thread) pour que la première alerte ne paie pas ce coût
+    from .llm import AnthropicLlm, get_llm
+
+    llm = get_llm()
+    if isinstance(llm, AnthropicLlm):
+        tasks.append(asyncio.create_task(llm.ensure_client(), name="llm-prewarm"))
     return tasks
 
 

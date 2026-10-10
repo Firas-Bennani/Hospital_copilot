@@ -25,3 +25,5 @@ logs/
 
 # Le module source computer_vision/src/datasets/ ne doit pas etre ignore (seuls les jeux de donnees bruts le sont)
 !computer_vision/src/datasets/
+*.db-shm
+*.db-wal
