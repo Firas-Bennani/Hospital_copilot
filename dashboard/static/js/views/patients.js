@@ -6,10 +6,17 @@ const PatientsView = (() => {
     let rows = [], selected = null, mounted = false, host = null;
     const FALL = { low: ['faible', 'tag-low'], medium: ['moyen', 'tag-medium'], high: ['élevé', 'tag-high'] };
 
+    // SpO2 en direct (oxymètre de pouls de la chambre)
+    function spo2Cell(room) {
+        const v = room && window.SensorPanel && SensorPanel.rooms[room] && (SensorPanel.rooms[room].vitals || {}).spo2;
+        if (v == null) return '<span class="muted">—</span>';
+        return `<span class="tag ${v < 90 ? 'tag-danger' : v < 94 ? 'tag-warn' : 'tag-ok'}" title="Saturation en oxygène (oxymètre de pouls)">${Math.round(v)} %</span>`;
+    }
+
     function listHtml() {
-        return `<table class="data"><thead><tr><th>Code</th><th>Identifiant</th><th>Nom</th><th>Âge</th><th>Chambre</th><th>Risque chute</th><th>État</th></tr></thead><tbody>
+        return `<table class="data"><thead><tr><th>Code</th><th>Identifiant</th><th>Nom</th><th>Âge</th><th>Chambre</th><th>SpO2</th><th>Risque chute</th><th>État</th></tr></thead><tbody>
             ${rows.map(p => `<tr data-id="${p.patient_id}" class="${selected === p.patient_id ? 'selected' : ''}"><td>${p.code}</td><td class="muted">${p.patient_id}</td><td>${Api.esc(p.full_name)} <span class="muted small">(${Api.esc(p.display_name)})</span></td><td>${p.age}</td>
-            <td>${p.room ? `<span class="room-pill">${p.room}</span>` : '<span class="muted">sorti</span>'}</td><td><span class="tag ${FALL[p.fall_risk][1]}">${FALL[p.fall_risk][0]}</span></td><td class="small">${p.legacy_state || '—'}</td></tr>`).join('')}
+            <td>${p.room ? `<span class="room-pill">${p.room}</span>` : '<span class="muted">sorti</span>'}</td><td>${spo2Cell(p.room)}</td><td><span class="tag ${FALL[p.fall_risk][1]}">${FALL[p.fall_risk][0]}</span></td><td class="small">${p.legacy_state || '—'}</td></tr>`).join('')}
         </tbody></table>`;
     }
 

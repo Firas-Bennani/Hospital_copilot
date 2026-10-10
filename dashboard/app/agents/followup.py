@@ -55,7 +55,11 @@ def verify_risk(rtype: str, rs: dict[str, Any]) -> tuple[bool, str]:
     if rtype == "bradycardia":
         return (v.get("hr") or 70) >= 50, f"FC {v.get('hr')}"
     if rtype == "hypoxemia":
-        return (v.get("spo2") or 100) >= 92, f"SpO2 {v.get('spo2')}"
+        from ..clinical.spo2 import classify
+        from .context import room_is_copd
+
+        c = classify(v.get("spo2"), copd=room_is_copd(str(rs.get("room"))))
+        return c["level"] == "none", f"SpO2 {v.get('spo2')} % (cible {c['target']})"
     if rtype == "hypotension":
         return (v.get("sys") or 120) >= 95, f"PAS {v.get('sys')}"  # même seuil que la détection (VitalsAgent)
     if rtype == "hypertension":
@@ -63,7 +67,9 @@ def verify_risk(rtype: str, rs: dict[str, Any]) -> tuple[bool, str]:
     if rtype == "tachypnea":
         return (v.get("rr") or 16) < 25, f"FR {v.get('rr')}"
     if rtype in ("news2_high", "sepsis_trend"):
-        n = news2(rr=v.get("rr"), spo2=v.get("spo2"), on_oxygen=bool((v.get("o2FlowLMin") or 0) > 0), sbp=v.get("sys"), hr=v.get("hr"), temp=v.get("tempC"))
+        from .context import room_is_copd
+
+        n = news2(rr=v.get("rr"), spo2=v.get("spo2"), on_oxygen=bool((v.get("o2FlowLMin") or 0) > 0), sbp=v.get("sys"), hr=v.get("hr"), temp=v.get("tempC"), spo2_scale2=room_is_copd(str(rs.get("room"))))
         return n.score < 5, f"NEWS2 {n.score}"
     if rtype == "iv_empty":
         vol = v.get("ivVolumeLeftMl")

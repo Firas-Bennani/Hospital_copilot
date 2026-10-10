@@ -31,5 +31,5 @@ const SensorPanel = (() => {
         if (typeof Auth === 'undefined') return;
         Auth.onReady(async () => { try { Object.assign(rooms, await Api.get('/api/rooms/states', { noRedirect: true })); render(); } catch (_) { /* rôle sans accès clinique */ } });
     });
-    return { render };
+    return { render, rooms };
 })();

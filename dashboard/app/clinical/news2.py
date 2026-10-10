@@ -1,7 +1,7 @@
 """
 NEWS2 (National Early Warning Score 2) — calcul déterministe.
 
-Échelle SpO2 1 (standard). `consciousness` : 'A' (alerte) ou 'CVPU' (confus / voix / douleur / aréactif).
+Échelle SpO2 1 (standard) ou 2 (`spo2_scale2=True` : patient BPCO, cible 88–92 %). `consciousness` : 'A' (alerte) ou 'CVPU' (confus / voix / douleur / aréactif).
 Référence : Royal College of Physicians, NEWS2 (2017).
 """
 
@@ -43,6 +43,23 @@ def score_spo2(spo2: float) -> int:
     if spo2 <= 95:
         return 1
     return 0
+
+
+def score_spo2_scale2(spo2: float, on_oxygen: bool) -> int:
+    """Échelle 2 du NEWS2 : la cible est 88–92 % ; une SpO2 haute SOUS oxygène est pénalisée."""
+    if spo2 <= 83:
+        return 3
+    if spo2 <= 85:
+        return 2
+    if spo2 <= 87:
+        return 1
+    if spo2 <= 92 or not on_oxygen:
+        return 0
+    if spo2 <= 94:
+        return 1
+    if spo2 <= 96:
+        return 2
+    return 3
 
 
 def score_sbp(sbp: float) -> int:
@@ -91,10 +108,12 @@ def news2(
     hr: Optional[float] = None,
     temp: Optional[float] = None,
     consciousness: str = "A",
+    spo2_scale2: bool = False,
 ) -> News2Result:
     comps: dict[str, int] = {}
     missing: list[str] = []
-    for key, val, fn in (("rr", rr, score_rr), ("spo2", spo2, score_spo2), ("sbp", sbp, score_sbp), ("hr", hr, score_hr), ("temp", temp, score_temp)):
+    spo2_fn = (lambda v: score_spo2_scale2(v, on_oxygen)) if spo2_scale2 else score_spo2
+    for key, val, fn in (("rr", rr, score_rr), ("spo2", spo2, spo2_fn), ("sbp", sbp, score_sbp), ("hr", hr, score_hr), ("temp", temp, score_temp)):
         if val is None:
             missing.append(key)
         else:

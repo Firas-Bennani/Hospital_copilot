@@ -59,3 +59,7 @@
 | 19:08 | Seuil de revérification de l'hypotension aligné sur celui de détection (95 mmHg au lieu de 100). | Un patient à 98 mmHg n'est pas en alerte mais ne pouvait pas être déclaré résolu. |
 | 19:10 | Étage 1 (Radiologie, Dialyse, Pharmacie, Équipements) : pas d'équipements pilotables. | Ces salles n'ont ni patient ni capteur dans le backend ; à faire seulement si une étape en a besoin. |
 | 19:12 | `scene.js` reçoit deux fonctions exportées de plus : `flyToLocal(room, pos, cible)` et `focusOnWindow(room)`. | Additif ; sert aux captures et à montrer un équipement. |
+| 19:20 | SpO2 : la désaturation n'est plus un « signal secondaire » rattaché à un risque critique existant : c'est toujours un risque à part entière, gradué par `clinical/spo2.py`. | Paramètre de premier plan (étape 6) ; une désaturation pendant une chute ne doit pas passer inaperçue. |
+| 19:22 | « Chute rapide » = perte d'au moins 4 points en 60 s **et** valeur déjà sous la cible du patient. | Sans la seconde condition, un passage de 100 à 96 % déclencherait un risque critique. |
+| 19:24 | Simulateur : bruit SpO2 réduit (écart-type ≈ 0,7 point) et profils recalés (101 : 96 %, 102 : 97 %, 103 BPCO : 91 %). | Avec le seuil d'attention à 94 % et des risques cliniques qui ne se lèvent plus seuls, le bruit créait des risques permanents. |
+| 19:25 | NEWS2 : échelle SpO2 n°2 appliquée automatiquement aux patients dont les antécédents mentionnent une BPCO. | Recommandation NEWS2 ; sinon le patient de la 103 (SpO2 91 % sous O2) a en permanence 3 points de SpO2. |

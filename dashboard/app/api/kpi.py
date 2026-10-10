@@ -28,6 +28,9 @@ def compute_kpi(session: Session) -> dict:
     temps = [t for t in temps if t is not None]
     hums = [handler.room_state(r)["env"].get("humidity") for r in handler.ROOMS]
     hums = [h for h in hums if h is not None]
+    spo2 = [(handler.room_state(r).get("vitals", {}).get("spo2"), r) for r in handler.ROOMS]
+    spo2 = [x for x in spo2 if x[0] is not None]
+    spo2_min = min(spo2) if spo2 else None
     meds = session.exec(select(Medication)).all()
     low = sum(1 for m in meds if m.low_stock)
     expiring = sum(1 for m in meds if m.expiring_within(60))
@@ -40,6 +43,8 @@ def compute_kpi(session: Session) -> dict:
         "staff_in_rooms": staff_in_rooms,
         "avg_temp": round(sum(temps) / len(temps), 2) if temps else None,
         "avg_humidity": round(sum(hums) / len(hums), 1) if hums else None,
+        "spo2_min": spo2_min[0] if spo2_min else None,
+        "spo2_min_room": spo2_min[1] if spo2_min else None,
         "pharmacy_alerts": low + expiring,
         "low_stock": low,
         "expiring": expiring,

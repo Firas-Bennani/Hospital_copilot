@@ -249,3 +249,5 @@ body.view-open #kpi-bar { display: none; }
 #viewport-container #hf-panel { bottom: 104px; }            /* au-dessus du bandeau KPI */
 body.view-open #hf-panel, body.view-open #hf-hud { display: none !important; }
 body:has(#hf-panel.hf-walking) #kpi-bar { display: none; }   /* visite à pied : le HUD occupe le bas de l'écran */
+.kpi.kpi-alert { border-color: rgba(239,68,68,.7); box-shadow: 0 0 14px rgba(239,68,68,.35); } .kpi.kpi-alert .kpi-value { color: #fca5a5; }
+.tag-ok { background: rgba(34,197,94,.18); color: #86efac; }

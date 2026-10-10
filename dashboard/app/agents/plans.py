@@ -41,7 +41,9 @@ def severity_for(rtype: str, details: dict[str, Any], patient: dict[str, Any] | 
     if rtype == "news2_high":
         s = int(details.get("news2", 0))
         return "critical" if s >= 7 else ("high" if s >= 5 else "medium")
-    if rtype in ("call", "pain", "iv_occlusion", "sepsis_trend", "hypoxemia", "hypotension", "hypertension", "hypothermia"):
+    if rtype == "hypoxemia":  # niveau fixé par clinical/spo2.py (seuils standard ou BPCO, chute rapide)
+        return {"attention": "medium", "high": "high", "critical": "critical"}.get(str(details.get("level")), "high")
+    if rtype in ("call", "pain", "iv_occlusion", "sepsis_trend", "hypotension", "hypertension", "hypothermia"):
         return "high"
     if rtype == "fever":
         t = float(details.get("tempC", 38.0))

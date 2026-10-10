@@ -54,9 +54,9 @@ class Profile:
 
 
 DEFAULT_PROFILES: dict[str, Profile] = {
-    "101": Profile(hr=78, spo2=95, sys=138, dia=82, temp=37.1, rr=18, oxygen_flow=1.0, iv_rate=83),  # pneumopathie, diabète
-    "102": Profile(hr=84, spo2=96, sys=112, dia=70, temp=36.7, rr=18, rhythm="afib", iv_rate=42, variability=1.4),  # insuff. cardiaque
-    "103": Profile(hr=88, spo2=92, sys=130, dia=76, temp=36.9, rr=22, oxygen_flow=2.0, iv_rate=63, nutrition_rate=60),  # BPCO
+    "101": Profile(hr=78, spo2=96, sys=138, dia=82, temp=37.1, rr=18, oxygen_flow=1.0, iv_rate=83),  # pneumopathie, diabète
+    "102": Profile(hr=84, spo2=97, sys=112, dia=70, temp=36.7, rr=18, rhythm="afib", iv_rate=42, variability=1.4),  # insuff. cardiaque
+    "103": Profile(hr=88, spo2=91, sys=130, dia=76, temp=36.9, rr=22, oxygen_flow=2.0, iv_rate=63, nutrition_rate=60),  # BPCO
     "104": Profile(hr=76, spo2=97, sys=118, dia=72, temp=37.0, rr=16, iv_rate=100, transfusion_rate=120),  # post-op hanche
 }
 
@@ -158,7 +158,7 @@ class VirtualRoom:
         for m, b in base.items():
             tau = 25.0 if m != "temp" else 180.0
             self.vitals[m] += (b - self.vitals[m]) * min(1.0, dt / tau)
-            noise = {"hr": 1.6, "spo2": 0.4, "sys": 2.2, "dia": 1.4, "temp": 0.03, "rr": 0.5}[m] * p.variability
+            noise = {"hr": 1.6, "spo2": 0.2, "sys": 2.2, "dia": 1.4, "temp": 0.03, "rr": 0.5}[m] * p.variability
             self.vitals[m] += random.gauss(0, noise) * math.sqrt(min(dt, 1.0))
         self.vitals["hr"] = max(28, min(200, self.vitals["hr"]))
         self.vitals["spo2"] = max(70, min(100, self.vitals["spo2"]))

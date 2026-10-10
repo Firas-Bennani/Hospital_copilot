@@ -18,6 +18,7 @@ const KpiBar = (() => {
                 <span class="kpi-sub">${dot('#a855f7')}${r.critical || 0} ${dot('#ef4444')}${r.high || 0} ${dot('#f59e0b')}${r.medium || 0} ${dot('#22c55e')}${r.low || 0}</span></div>
             <div class="kpi"><span class="kpi-label">Personnel en service</span><span class="kpi-value">${data.staff_on_duty}</span><span class="kpi-sub">${data.staff_in_rooms} en chambre</span></div>
             <div class="kpi"><span class="kpi-label">Température moyenne</span><span class="kpi-value">${data.avg_temp != null ? data.avg_temp.toFixed(1) + '<span class="metric-unit">°C</span>' : '—'}</span><span class="kpi-sub">${data.avg_humidity != null ? 'humidité ' + Math.round(data.avg_humidity) + ' %' : ''}</span></div>
+            <div class="kpi ${data.spo2_min != null && data.spo2_min < 90 ? 'kpi-alert' : ''}"><span class="kpi-label">SpO2 la plus basse</span><span class="kpi-value">${data.spo2_min != null ? Math.round(data.spo2_min) + '<span class="metric-unit">%</span>' : '—'}</span><span class="kpi-sub">${data.spo2_min_room ? 'chambre ' + data.spo2_min_room : 'oxymètres de pouls'}</span></div>
             <div class="kpi"><span class="kpi-label">Alertes pharmacie</span><span class="kpi-value">${data.pharmacy_alerts}</span><span class="kpi-sub">${data.low_stock} stock bas · ${data.expiring} péremption</span></div>`;
     }
 

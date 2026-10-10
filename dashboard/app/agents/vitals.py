@@ -14,17 +14,19 @@ from ..ingest import handler
 from .base import Agent
 
 # seuils par défaut : (type_de_risque, condition) — la sévérité fine est calculée par plans.severity_for
-DEFAULT_LIMITS = {"hr_high": 112, "hr_low": 48, "spo2_low": 91, "sys_low": 95, "sys_high": 180, "temp_high": 38.0, "temp_low": 35.0, "rr_high": 25}
+DEFAULT_LIMITS = {"hr_high": 112, "hr_low": 48, "spo2_low": 94, "sys_low": 95, "sys_high": 180, "temp_high": 38.0, "temp_low": 35.0, "rr_high": 25}
 PERSIST = 3  # lectures consécutives hors limites avant alerte (anti-bruit)
-SECONDARY = {"tachycardia", "bradycardia", "hypotension", "hypertension", "tachypnea", "hypoxemia"}
+SECONDARY = {"tachycardia", "bradycardia", "hypotension", "hypertension", "tachypnea"}  # la désaturation est toujours un risque à part entière
 
 
 def limits_for(patient: Optional[dict[str, Any]]) -> dict[str, float]:
     lim = dict(DEFAULT_LIMITS)
     hist = ((patient or {}).get("history") or "").lower()
+    lim["copd"] = False
     if "bpco" in hist or "copd" in hist:
         lim["spo2_low"] = 88  # cible SpO2 88–92 % chez le BPCO
         lim["rr_high"] = 28
+        lim["copd"] = True
     if "fibrillation" in hist or "afib" in hist:
         lim["hr_high"] = 120
     return lim
@@ -41,6 +43,7 @@ class VitalsAgent(Agent):
         self.reported: dict[tuple[str, str], float] = {}
         self.active: dict[tuple[str, str], bool] = {}
         self.streak: dict[tuple[str, str], int] = {}
+        self.rank: dict[tuple[str, str], int] = {}
         self.limits_cache: dict[str, tuple[float, dict[str, float]]] = {}
         self.last_news2: dict[str, int] = {}
         from ..config import settings
@@ -63,15 +66,18 @@ class VitalsAgent(Agent):
         self.limits_cache[room] = (time.time(), lim)
         return lim
 
-    async def raise_candidate(self, room: str, rtype: str, details: dict[str, Any], reasoning: str, min_interval: float = 120.0) -> None:
+    async def raise_candidate(self, room: str, rtype: str, details: dict[str, Any], reasoning: str, min_interval: float = 120.0, rank: int = 0) -> None:
+        """`rank` : gravité du signal (0 si non gradué) ; une aggravation est transmise sans attendre `min_interval`."""
         key = (room, rtype)
         now = time.time()
         self.streak[key] = self.streak.get(key, 0) + 1
         if self.streak[key] < PERSIST:
             return
         self.active[key] = True
-        if now - self.reported.get(key, 0) < min_interval:
+        worse = rank > self.rank.get(key, 0)
+        if not worse and now - self.reported.get(key, 0) < min_interval:
             return
+        self.rank[key] = max(rank, self.rank.get(key, 0))
         if rtype in SECONDARY and handler.room_state(room).get("riskLevel") == "critical":
             # conséquence probable d'un risque critique déjà ouvert (chute...) : noté, pas de doublon de risque
             if now - self.reported.get((room, "_secondary_note"), 0) > 120:
@@ -86,6 +92,7 @@ class VitalsAgent(Agent):
     async def clear(self, room: str, rtype: str, reason: str) -> None:
         key = (room, rtype)
         self.streak[key] = 0
+        self.rank.pop(key, None)
         if self.active.get(key):
             self.active[key] = False
             await bus.publish("internal/risk_clear", {"room": room, "types": [rtype], "reason": reason})
@@ -95,6 +102,7 @@ class VitalsAgent(Agent):
             self.reported.clear()
             self.active.clear()
             self.streak.clear()
+            self.rank.clear()
             return
         p = ev.payload
         room, d = p["room"], p["data"]
@@ -113,8 +121,14 @@ class VitalsAgent(Agent):
                 await self.raise_candidate(room, "tachypnea", {"rr": m["rr"], "limit": lim["rr_high"]}, f"FR {m['rr']}/min ≥ {lim['rr_high']}.")
         elif t == "spo2" and m.get("spo2") is not None:
             s = float(m["spo2"])
-            if s < lim["spo2_low"]:
-                await self.raise_candidate(room, "hypoxemia", {"spo2": s, "limit": lim["spo2_low"]}, f"SpO2 {s:.0f} % < seuil patient {lim['spo2_low']} %.")
+            from ..clinical.spo2 import classify
+
+            hist = handler.device_history(f"{room}-spo2", "spo2", 60)
+            drop = (max(v for _, v in hist) - s) if len(hist) >= 5 else None
+            c = classify(s, copd=bool(lim.get("copd")), drop_per_min=drop)
+            if c["level"] != "none":
+                await self.raise_candidate(room, "hypoxemia", {"spo2": s, "level": c["level"], "target": c["target"], "dropPerMin": round(drop, 1) if drop is not None else None, "copd": c["copd"], "limit": lim["spo2_low"]},
+                                           f"{c['reason']}. Niveau déterministe : {c['level']}.", rank={"attention": 1, "high": 2, "critical": 3}[c["level"]])
             else:
                 await self.clear(room, "hypoxemia", f"SpO2 {s:.0f} % normalisée")
         elif t == "bp" and m.get("sys") is not None:
