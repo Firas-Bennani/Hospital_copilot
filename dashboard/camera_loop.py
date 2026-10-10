@@ -16,6 +16,7 @@ import json
 import logging
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import cv2
@@ -99,6 +100,31 @@ def analyze_pain(DeepFace, img, x1, y1, x2, y2):
         return emotion in PAIN_EMOTIONS, emotion
     except Exception:
         return False, "no_face"
+
+
+ROOM = "101"
+_last_contract = {"t": 0.0}
+
+
+def send_contract(event_type, confidence, emotion="unknown"):
+    """Publie aussi au format des contrats (POST /api/ingest : vision/state + vision/expression), 2 Hz max."""
+    now = time.time()
+    if now - _last_contract["t"] < 0.5:
+        return
+    _last_contract["t"] = now
+    ts = datetime.now(timezone.utc).isoformat()
+    fall = event_type in ("fall", "fall_and_pain")
+    pain = event_type in ("pain", "fall_and_pain")
+    state = {"ts": ts, "source": "camera_loop", "persons": 1, "patientTrackId": 1,
+             "posture": "on_floor" if fall else "lying_bed", "activity": "fall" if fall else "awake_bed",
+             "zone": "floor" if fall else "bed", "confidence": round(float(confidence), 3), "cvClass": "falling" if fall else "no_falling"}
+    expr = "pain" if pain else ({"happy": "happy", "sad": "sad", "fear": "fear", "angry": "anger", "surprise": "surprise"}.get(emotion, "neutral"))
+    msgs = [{"topic": f"hackcure/room/{ROOM}/vision/state", "payload": state},
+            {"topic": f"hackcure/room/{ROOM}/vision/expression", "payload": {"ts": ts, "source": "camera_loop", "expression": expr, "confidence": 0.7 if pain else 0.5}}]
+    try:
+        requests.post(f"{SERVER_URL}/api/ingest", json={"messages": msgs}, timeout=2)
+    except Exception:
+        pass
 
 
 def send_event(patient_id, event_type, confidence):
@@ -204,14 +230,20 @@ def main():
                 # Determine event type
                 if is_falling and is_pain:
                     send_event(args.patient_id, "fall_and_pain", conf)
+                    send_contract("fall_and_pain", conf, emotion)
                 elif is_falling:
                     send_event(args.patient_id, "fall", conf)
+                    send_contract("fall", conf, emotion)
                 elif is_pain:
                     send_event(args.patient_id, "pain", conf)
+                    send_contract("pain", conf, emotion)
                 # If normal, send recover only if there was a previous alert
                 elif f"{args.patient_id}:fall" in last_events or \
                      f"{args.patient_id}:pain" in last_events:
                     send_event(args.patient_id, "recover", conf)
+                    send_contract("recover", conf, emotion)
+                else:
+                    send_contract("normal", conf, emotion)
 
     except KeyboardInterrupt:
         logger.info("Stopped by user")

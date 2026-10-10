@@ -130,3 +130,5 @@ const CommandView = (() => {
     Views.register('command', { title: 'Centre de commande', perm: 'view_command', mount(el) { mounted = true; render(el); }, unmount() { mounted = false; } });
     return { select, refresh };
 })();
+
+window.CommandView = CommandView;

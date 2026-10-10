@@ -114,3 +114,5 @@ const PatientsView = (() => {
     Views.register('patients', { title: 'Patients', perm: 'view_patients', mount(el) { mounted = true; render(el); }, unmount() { mounted = false; } });
     return { select };
 })();
+
+window.PatientsView = PatientsView;

@@ -54,6 +54,13 @@ async def send_command(room: str, equipment: str, action: str, requested_by: str
         transport = "embedded"
     if transport is None and mqtt.connected() and await mqtt.publish(topic, payload):
         transport = "mqtt"
+    if transport is None and handler.edge_alive(room):
+        # edge réel sans broker : il interroge GET /api/edge/commands et répond par cmd/ack via /api/ingest
+        from .api.edge import enqueue
+
+        enqueue(room, payload, equipment)
+        transport = "http-poll"
+        timeout = max(timeout, 8.0)
 
     result: Optional[dict[str, Any]] = None
     if transport is None:

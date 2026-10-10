@@ -96,3 +96,5 @@ const AgentsPanel = (() => {
     });
     return { load, openRisk };
 })();
+
+window.AgentsPanel = AgentsPanel;

@@ -37,3 +37,5 @@ const HistoryView = (() => {
     Views.register('history', { title: 'Historique patients', perm: 'view_history', mount(el) { mounted = true; render(el); }, unmount() { mounted = false; } });
     return { select };
 })();
+
+window.HistoryView = HistoryView;

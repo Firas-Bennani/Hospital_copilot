@@ -133,3 +133,5 @@ const Equipment = (() => {
 
     return { setState, setIV, setMonitor, update, get };
 })();
+
+window.StaffAvatars = StaffAvatars; window.Equipment = Equipment;

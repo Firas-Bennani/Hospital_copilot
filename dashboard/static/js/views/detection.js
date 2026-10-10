@@ -87,3 +87,5 @@ const DetectionView = (() => {
     Views.register('detection', { title: 'Centre de détection', perm: 'view_clinical', mount(el) { mounted = true; render(el); }, unmount() { mounted = false; } });
     return { select, refresh };
 })();
+
+window.DetectionView = DetectionView;

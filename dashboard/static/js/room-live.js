@@ -60,3 +60,5 @@ const RoomLive = (() => {
 
     return { apply, get: (room) => states[room], all: () => states };
 })();
+
+window.RoomLive = RoomLive;

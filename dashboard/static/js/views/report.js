@@ -62,3 +62,5 @@ const ReportView = (() => {
     Views.register('report', { title: 'Rapport médecin', perm: 'view_medical_docs', mount(el) { mounted = true; render(el); }, unmount() { mounted = false; } });
     return { selectAdmission };
 })();
+
+window.ReportView = ReportView;
