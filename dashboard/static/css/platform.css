@@ -186,6 +186,9 @@ body.view-open #kpi-bar { display: none; }
 .agent-filters { display: flex; gap: 6px; }
 .agent-filters select { flex: 1; padding: 5px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); background: rgba(2,6,23,.6); color: var(--text-primary); font-size: 11px; font-family: var(--font); }
 .agent-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 10px 12px; }
+.agent-card.compact { padding: 6px 10px; }
+.agent-card.compact .agent-log { border-top: none; padding-top: 0; margin-top: 2px; }
+#agent-cards { display: flex; flex-direction: column; gap: 4px; }
 .agent-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .agent-name { font-weight: 700; font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
 .agent-status { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; padding: 2px 8px; border-radius: 10px; background: var(--bg-hover); color: var(--text-muted); }
