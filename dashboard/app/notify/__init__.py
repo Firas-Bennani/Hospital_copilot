@@ -17,6 +17,9 @@ LEVEL_ICON = {"info": "ℹ️", "warning": "⚠️", "critical": "🚨"}
 ROLE_LABEL = {"nurse": "Infirmier", "duty_doctor": "Médecin de garde", "all": "Tous"}
 
 
+ROLE_LABEL.setdefault("psychiatrist", "Psychiatre")
+
+
 async def notify(level: str, title: str, body: str = "", room: Optional[str] = None, risk_id: Optional[int] = None, target_role: str = "nurse", telegram: bool = True) -> Notification:
     channels = ["in_app"]
     use_tg = telegram and settings.telegram_enabled

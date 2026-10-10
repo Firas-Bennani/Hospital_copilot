@@ -292,3 +292,8 @@ body:has(#hf-panel.hf-walking) #kpi-bar { display: none; }   /* visite à pied :
 .dose-row.dose-given { opacity: .7; } .dose-time { font-weight: 700; font-variant-numeric: tabular-nums; width: 46px; } .dose-main { flex: 1; min-width: 220px; }
 .report-draft { padding: 8px 0; border-bottom: 1px solid rgba(148,163,184,.1); }
 #main-nav .nav-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ─── Psychologie ─── */
+.psy-score { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.psy-disorder { padding: 6px 8px; background: rgba(15,23,42,.5); border-radius: 6px; }
+.psy-bar { height: 6px; border-radius: 3px; background: rgba(148,163,184,.2); margin: 5px 0; overflow: hidden; } .psy-bar span { display: block; height: 100%; }

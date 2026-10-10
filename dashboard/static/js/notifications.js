@@ -16,7 +16,7 @@ const Notifications = (() => {
         return `<div class="notif-item level-${n.level} ${n.read ? '' : 'unread'}" data-id="${n.id}" data-risk="${n.risk_id || ''}">
             <div class="notif-title"><span>${ICON[n.level] || ''} ${Api.esc(n.title)}</span><span class="notif-time">${Api.fmtTime(n.created_at)}</span></div>
             <div class="notif-body">${Api.esc(n.body || '')}</div>
-            <div class="muted small">→ ${n.target_role === 'duty_doctor' ? 'médecin de garde' : n.target_role === 'nurse' ? 'infirmier' : 'tous'} · ${(n.channels || []).includes('telegram') ? (n.telegram_sent ? 'Telegram ✓' : 'Telegram') : 'in-app'}</div>
+            <div class="muted small">→ ${({ duty_doctor: 'médecin de garde', nurse: 'infirmier', psychiatrist: 'psychiatre', general_doctor: 'médecin généraliste', pharmacist: 'pharmacien' }[n.target_role] || 'tous')} · ${(n.channels || []).includes('telegram') ? (n.telegram_sent ? 'Telegram ✓' : 'Telegram') : 'in-app'}</div>
         </div>`;
     }
 

@@ -59,6 +59,10 @@ PERMISSIONS: dict[str, set[str]] = {
     "write_treatment_orders": DOCTORS,
     "view_care_plan": {"nurse"} | DOCTORS | PSY,
     "administer_medication": {"nurse"} | DOCTORS,
+    # V2 étape 7 — psychologie : psychiatre en écriture, médecins en lecture complète, infirmiers en lecture (état + consignes)
+    "view_psychology": {"nurse"} | DOCTORS | PSY,
+    "view_psych_answers": DOCTORS | PSY,
+    "write_psychology": PSY | {"owner"},
     "run_demo": ALL,
 }
 

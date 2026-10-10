@@ -61,6 +61,7 @@ const Nav = (() => {
         { id: 'diagnostics', label: 'Diagnostics live', icon: '🧬', perm: 'view_diagnostics' },
         { id: 'treatment', label: 'Ordonnance de traitement', icon: '💉', perm: 'view_treatment_orders' },
         { id: 'careplan', label: 'Plan de soins', icon: '🗓️', perm: 'view_care_plan' },
+        { id: 'psych', label: 'Psychologie', icon: '🧠', perm: 'view_psychology' },
         { id: 'users', label: 'Utilisateurs', icon: '👥', perm: 'manage_users' },
     ];
 

@@ -483,3 +483,45 @@ class MedicationDose(SQLModel, table=True):
     reminded_at: Optional[datetime] = None
     relaunched_at: Optional[datetime] = None
     escalated_at: Optional[datetime] = None
+
+
+# ─── V2 étape 7 : psychologie ─────────────────────────────────────────────────
+class PsychQuestionnaire(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    patient_pk: int = Field(foreign_key="patient.id", index=True)
+    admission_id: Optional[int] = Field(default=None, foreign_key="admission.id", index=True)
+    room_code: str = ""
+    token: str = Field(index=True, unique=True)  # lien de la page tablette
+    status: str = "pending"  # pending | completed
+    answers_json: str = "{}"
+    scores_json: str = "{}"
+    q9_positive: bool = False
+    created_at: datetime = Field(default_factory=utcnow)
+    completed_at: Optional[datetime] = None
+
+
+class PsychScore(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    patient_pk: int = Field(foreign_key="patient.id", index=True)
+    admission_id: Optional[int] = Field(default=None, foreign_key="admission.id", index=True)
+    room_code: str = Field(default="", index=True)
+    wellbeing: int = 100  # 0–100
+    level: str = "faible"  # niveau de risque global : faible | modéré | élevé
+    detail_json: str = "{}"  # par trouble : score, niveau, facteurs ; conduite à tenir ; explication IA
+    ts: datetime = Field(default_factory=utcnow, index=True)
+
+
+class PsychPrescription(SQLModel, table=True):
+    """Prescription psychothérapeutique (psychiatre) : type de suivi, fréquence, objectifs, consignes à l'équipe."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    patient_pk: int = Field(foreign_key="patient.id", index=True)
+    admission_id: Optional[int] = Field(default=None, foreign_key="admission.id")
+    type: str = ""
+    frequency: str = ""
+    goals: str = ""
+    instructions: str = ""
+    author: str = ""
+    author_name: str = ""
+    active: bool = True
+    created_at: datetime = Field(default_factory=utcnow)

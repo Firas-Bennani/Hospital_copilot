@@ -51,7 +51,12 @@ def test_ws_init_then_demo_event(client):
         assert isinstance(init["event_history"], list)
 
         ws.send_text(json.dumps({"type": "ping"}))
-        assert json.loads(ws.receive_text())["type"] == "pong"
+        reply = json.loads(ws.receive_text())
+        for _ in range(50):  # les agents V2 diffusent en continu (diagnostics, psychologie…) : on saute leurs messages
+            if reply["type"] == "pong":
+                break
+            reply = json.loads(ws.receive_text())
+        assert reply["type"] == "pong"
 
         r = client.post("/api/demo/trigger", json={"patient_id": "patient_02", "event_type": "fall", "confidence": 0.93})
         assert r.status_code == 200 and r.json()["status"] == "ok"

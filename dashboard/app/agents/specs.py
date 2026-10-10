@@ -175,3 +175,22 @@ spec(
     format='{"summary": "une phrase", "context": "ce qui a été détecté, quand", "intervention": ["action horodatée"], "outcome": "résultat de la revérification", "follow_up": ["suite à donner"]}',
     required=["summary", "intervention"], mock=_mock_intervention,
 )
+
+
+# ─── PsychAgent ───────────────────────────────────────────────────────────────
+def _mock_psych(ctx: dict[str, Any]) -> dict[str, Any]:
+    troubles = ctx.get("troubles") or {}
+    worst = max(troubles.items(), key=lambda kv: kv[1].get("score", 0)) if troubles else ("—", {"niveau": "faible", "facteurs": []})
+    return {"explanation": f"Score de bien-être {ctx.get('score_bien_etre')}/100, sous le seuil de {ctx.get('seuil')}. Risque le plus marqué : {worst[0].lower()} ({worst[1].get('niveau')}), "
+                           f"porté par : {'; '.join(worst[1].get('facteurs', [])[:4]) or 'facteurs non précisés'}. Il s'agit d'un niveau de risque estimé, pas d'un diagnostic.",
+            "conduct": list(ctx.get("conduite_a_tenir_standard") or [])[:4]}
+
+
+spec(
+    "psych-monitoring", agent="PsychAgent", title="Explication du score de bien-être psychologique",
+    system=("Le score de bien-être psychologique d'un patient hospitalisé est passé sous le seuil. Les scores par trouble (dépression, anxiété généralisée, insomnie) et leurs facteurs "
+            "sont calculés par des règles à partir de questionnaires (PHQ-9, GAD-7, sommeil) et d'observations (expressions, levers nocturnes, sommeil, constantes). "
+            "Explique en 3 phrases au plus, pour l'équipe soignante, quels facteurs pèsent le plus, puis propose 3 à 4 conduites à tenir simples et bienveillantes (tu peux reprendre la conduite standard fournie). "
+            "Ce n'est JAMAIS un diagnostic : ne nomme pas une maladie comme établie, parle de « risque » et de « signes ». Si des idées suicidaires sont mentionnées, la sécurité du patient passe en premier."),
+    format='{"explanation": "3 phrases au plus", "conduct": ["conduite à tenir"]}', required=["explanation"], mock=_mock_psych,
+)

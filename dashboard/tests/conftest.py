@@ -29,6 +29,7 @@ os.environ.setdefault("MED_RELAUNCH_S", "1")
 os.environ.setdefault("MED_ESCALATE_S", "2.5")
 os.environ.setdefault("MED_DUE_WINDOW_S", "900")
 os.environ.setdefault("DIAGNOSTICS_TICK_S", "1")
+os.environ.setdefault("PSYCH_TICK_S", "1")
 os.environ.setdefault("N8N_ENABLED", "0")  # jamais de vrai n8n ni de vraie API pendant les tests
 os.environ["PLATFORM_SERVICE_TOKEN"] = "test-service-token"
 os.environ["N8N_WEBHOOK_SECRET"] = "test-webhook-secret"
