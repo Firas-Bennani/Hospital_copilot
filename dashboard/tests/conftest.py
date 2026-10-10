@@ -36,6 +36,7 @@ USERNAMES = {
     "duty_doctor": "medecin_garde",
     "general_doctor": "medecin",
     "owner": "owner",
+    "psychiatrist": "psychiatre",
 }
 
 

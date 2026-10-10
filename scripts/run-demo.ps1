@@ -29,4 +29,4 @@ if ($Edge) {
     Write-Host "Edge --fake démarré (chambre 101)."
 }
 Set-Location "$Root\dashboard"
-& "$Root\.venv\Scripts\python.exe" -m uvicorn server:app --host 0.0.0.0 --port $Port
+& "$Root\.venv\Scripts\python.exe" serve.py --port $Port   # IPv4 + IPv6 : http://localhost repond sans delai

@@ -53,6 +53,7 @@ DEMO_USERS = [
     ("medecin_garde", "duty_doctor", "Dr Nour Khelifi"),
     ("medecin", "general_doctor", "Dr Youssef Mansour"),
     ("owner", "owner", "Dr Amira Ben Ammar"),
+    ("psychiatre", "psychiatrist", "Dr Yasmine Dridi"),
 ]
 
 
@@ -120,6 +121,11 @@ def seed_all() -> None:
             logger.info("Seed inséré : chambres, patients, admissions, pharmacie, personnel, utilisateurs")
         _ensure_users(session)
         session.flush()
+        from .medical_history import ensure_history
+
+        n = ensure_history(session)  # V2 : 5 à 15 ans d'historique fictif par patient (déterministe)
+        if n:
+            logger.info("Dossier médical : %d documents d'historique générés", n)
         sync_legacy_state(session)
 
 

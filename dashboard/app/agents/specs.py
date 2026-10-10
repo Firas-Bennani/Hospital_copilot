@@ -86,3 +86,29 @@ spec(
     format='{"summary": "2 à 3 phrases", "exam_focus": ["point d\'examen clinique"], "labs": [{"code": "CRP", "justification": "pourquoi, pour CE patient"}], "interpretation": "phase resultats uniquement", "watch": ["surveillance"]}',
     required=["summary"], mock=_mock_fever,
 )
+
+
+# ─── ReportAgent : synthèse du dossier médical ───────────────────────────────
+def _mock_record_summary(ctx: dict[str, Any]) -> dict[str, Any]:
+    p = ctx.get("patient") or {}
+    chron = [f"{c['label']} (depuis {c['since']})" for c in ctx.get("maladies_chroniques") or []]
+    return {
+        "summary": f"{p.get('nom', 'Patient')}, {p.get('age', '?')} ans : {len(chron)} maladie(s) chronique(s) suivie(s), {len(ctx.get('allergies') or [])} allergie(s) documentée(s), "
+                   f"{ctx.get('documents_au_dossier', '?')} documents au dossier." + (f" Hospitalisation en cours : {ctx['hospitalisation_en_cours']}." if ctx.get("hospitalisation_en_cours") else ""),
+        "allergies": [f"{a['allergen']}" + (f" (documentée en {a['since']})" if a.get("since") else "") for a in ctx.get("allergies") or []] or ["Aucune allergie connue"],
+        "chronic": chron or ["Aucune maladie chronique enregistrée"],
+        "history": [f"{h['label']} ({h['year']})" for h in ctx.get("antecedents") or []] or ["Aucun antécédent chirurgical ou d'hospitalisation enregistré"],
+        "active_treatments": [f"{t['dci']} {t.get('posology', '')}".strip() for t in (ctx.get("traitements_au_long_cours") or [])] + [f"{t['dci']} {t.get('posology', '')} ({t.get('route', '')}, hospitalier)".strip() for t in (ctx.get("traitements_hospitaliers_en_cours") or [])],
+        "attention": [f"{v['examen']} {v['valeur']} {v['unite']} le {v['date']} (hors normes)" for v in (ctx.get("dernieres_valeurs_biologiques") or {}).values() if v.get("anormal")][:5]
+                     + ([f"Risque de chute {p['risque_de_chute']}"] if p.get("risque_de_chute") in ("high", "medium") else []),
+    }
+
+
+spec(
+    "record-summary", agent="ReportAgent", title="Synthèse du dossier médical",
+    system=("Tu synthétises le dossier médical d'un patient pour l'équipe soignante, à partir des seuls éléments fournis (extraits déterministes du dossier). "
+            "Sois factuel et concis : chaque point cite une date ou une valeur du dossier. Les points d'attention sont ce qu'un soignant doit savoir AVANT d'agir "
+            "(allergies, interactions à surveiller, valeurs biologiques hors normes récentes, risque de chute, fragilités)."),
+    format='{"summary": "3 à 5 phrases", "allergies": ["..."], "chronic": ["maladie (depuis AAAA)"], "history": ["antécédent (AAAA)"], "active_treatments": ["médicament posologie"], "attention": ["point d\'attention"]}',
+    required=["summary"], mock=_mock_record_summary,
+)

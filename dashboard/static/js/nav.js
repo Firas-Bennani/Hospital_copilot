@@ -57,6 +57,7 @@ const Nav = (() => {
         { id: 'report', label: 'Rapport médecin', icon: '📝', perm: 'view_medical_docs' },
         { id: 'prescription', label: 'Ordonnance', icon: '℞', perm: 'view_medical_docs' },
         { id: 'history', label: 'Historique patients', icon: '🗂️', perm: 'view_history' },
+        { id: 'dossier', label: 'Dossier médical', icon: '📚', perm: 'open_medical_record' },
         { id: 'users', label: 'Utilisateurs', icon: '👥', perm: 'manage_users' },
     ];
 

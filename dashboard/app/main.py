@@ -77,6 +77,13 @@ async def lifespan(app: FastAPI):
             except Exception:  # pragma: no cover
                 logger.exception("Démarrage de %s impossible", mod_name)
 
+    import os
+
+    if os.getenv("LOOP_WATCHDOG", "0") == "1":  # diagnostic : pile des threads si la boucle se fige
+        from . import watchdog
+
+        _background_tasks.extend(await watchdog.start(float(os.getenv("LOOP_WATCHDOG_S", "1.5"))))
+
     try:
         yield
     finally:
@@ -124,6 +131,7 @@ def create_app() -> FastAPI:
         "edge",
         "n8n",
         "fever",
+        "dossier",
         "print",
     ):
         mod = _import_optional(f".api.{name}")

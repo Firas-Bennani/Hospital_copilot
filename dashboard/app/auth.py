@@ -21,9 +21,10 @@ from .config import settings
 
 logger = logging.getLogger("hackcure.auth")
 
-ROLES = ("pharmacist", "receptionist", "nurse", "duty_doctor", "general_doctor", "owner")
+ROLES = ("pharmacist", "receptionist", "nurse", "duty_doctor", "general_doctor", "owner", "psychiatrist")
 DOCTORS = {"duty_doctor", "general_doctor", "owner"}
-CLINICAL = {"receptionist", "nurse", "duty_doctor", "general_doctor", "owner"}  # tout sauf pharmacien
+PSY = {"psychiatrist"}  # V2 : voit toute la plateforme, écrit le dossier médical et la psychologie
+CLINICAL = {"receptionist", "nurse", "duty_doctor", "general_doctor", "owner", "psychiatrist"}  # tout sauf pharmacien
 ALL = set(ROLES)
 
 # permission -> rôles autorisés (table de la section 11 du PROMPT)
@@ -44,6 +45,12 @@ PERMISSIONS: dict[str, set[str]] = {
     "write_medical_docs": DOCTORS,
     "view_history": CLINICAL,
     "manage_users": {"owner"},
+    # V2 — dossier médical : lecture/écriture médecins + psychiatre, lecture infirmiers, vues restreintes sinon
+    "view_medical_record": {"nurse"} | DOCTORS | PSY,
+    "write_medical_record": DOCTORS | PSY,
+    "view_record_identity": {"receptionist"},
+    "view_record_pharmacy": {"pharmacist"},
+    "open_medical_record": ALL | PSY,
     "run_demo": ALL,
 }
 
@@ -54,6 +61,7 @@ ROLE_LABELS = {
     "duty_doctor": "Médecin de garde",
     "general_doctor": "Médecin généraliste",
     "owner": "Propriétaire",
+    "psychiatrist": "Psychiatre / psychologue clinicien",
 }
 
 

@@ -30,4 +30,4 @@ if [ "$EDGE" = "1" ]; then
   echo "Edge --fake démarré (chambre 101)."
 fi
 cd dashboard
-exec "$ROOT/.venv/bin/python" -m uvicorn server:app --host 0.0.0.0 --port "$PORT"
+exec "$ROOT/.venv/bin/python" serve.py --port "$PORT"

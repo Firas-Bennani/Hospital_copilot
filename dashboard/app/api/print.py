@@ -91,3 +91,45 @@ def print_shift(report_id: int, request: Request, session: Session = Depends(get
     d = _shift_out(r)
     d["content_html"] = _md_to_html(d["content"])
     return templates.TemplateResponse(request, "shift.html", {"r": d, "user": user, "now": datetime.now()})
+
+
+# ─── V2 : dossier médical (un document, ou la synthèse IA) ────────────────────
+@router.get("/dossier/entry/{entry_id}", response_class=HTMLResponse)
+def print_dossier_entry(entry_id: int, request: Request, session: Session = Depends(get_session), user: authlib.CurrentUser = Depends(authlib.require("view_medical_record"))):
+    import json
+
+    from ..audit import audit
+    from ..models import MedicalRecordEntry, Patient
+
+    e = session.get(MedicalRecordEntry, entry_id)
+    if not e:
+        raise HTTPException(404, "Document introuvable")
+    patient = session.get(Patient, e.patient_pk)
+    body = e.content
+    ai = e.type == "synthese"
+    if ai:
+        data = json.loads(e.data_json or "{}")
+        parts = [e.summary, ""]
+        for title, key in (("Allergies", "allergies"), ("Maladies chroniques", "chronic"), ("Antécédents", "history"), ("Traitements actifs", "active_treatments"), ("Points d'attention", "attention")):
+            parts += [f"## {title}"] + [f"- {x}" for x in data.get(key) or ["—"]] + [""]
+        body = "\n".join(parts)
+    d = {"id": e.id, "title": e.title, "date": e.date, "author": e.author, "service": e.service, "facility": e.facility, "content_html": _md_to_html(body), "ai": ai}
+    from ..db import session_scope
+
+    pid = patient.patient_id if patient else None
+    with session_scope() as s2:  # trace hors de la session de lecture (verrou SQLite)
+        audit(s2, user, "print", "medical_record_entry", entry_id, {"patient": pid})
+    return templates.TemplateResponse(request, "dossier.html", {"d": d, "patient": patient, "user": user, "now": datetime.now()})
+
+
+@router.get("/dossier/summary/{patient_id}", response_class=HTMLResponse)
+def print_dossier_summary(patient_id: str, request: Request, session: Session = Depends(get_session), user: authlib.CurrentUser = Depends(authlib.require("view_medical_record"))):
+    from sqlmodel import select
+
+    from ..models import MedicalRecordEntry, Patient
+
+    p = session.exec(select(Patient).where(Patient.patient_id == patient_id)).first()
+    e = p and session.exec(select(MedicalRecordEntry).where(MedicalRecordEntry.patient_pk == p.id, MedicalRecordEntry.type == "synthese").order_by(MedicalRecordEntry.date.desc())).first()
+    if not e:
+        raise HTTPException(404, "Aucune synthèse : la générer d'abord depuis le dossier médical")
+    return print_dossier_entry(e.id, request, session, user)

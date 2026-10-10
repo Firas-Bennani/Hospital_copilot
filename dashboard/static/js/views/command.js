@@ -35,7 +35,7 @@ const CommandView = (() => {
         const origin = r.handled_by === 'n8n' ? '<span class="tag tag-n8n" title="Plan, Telegram, attente d\'acquittement et escalade orchestrés par n8n">orchestré par n8n</span>' : '<span class="tag" title="Agents Python locaux">agents locaux</span>';
         const provider = r.plan ? r.plan.llm_provider : '';
         const fallbackTag = /secours/i.test(provider) ? '<span class="tag tag-fallback">réponse de secours (LLM indisponible)</span>' : '';
-        return `<h3>#${r.id} · ${Api.esc(r.title)} <span class="tag tag-${r.severity}">${SEV_FR[r.severity]}</span> <span class="tag tag-${r.status}">${ST_FR[r.status]}</span> ${origin} ${fallbackTag}</h3>
+        return `${r.patient_id ? '<div id="cmd-profile"></div>' : ''}<h3>#${r.id} · ${Api.esc(r.title)} <span class="tag tag-${r.severity}">${SEV_FR[r.severity]}</span> <span class="tag tag-${r.status}">${ST_FR[r.status]}</span> ${origin} ${fallbackTag}</h3>
             <div class="ai-hint">🧠 ${Api.esc(r.explanation)}<br><span class="muted">Suggestion IA — à valider par un soignant.</span></div>
             <h3>Plan d'action ${r.plan ? `<span class="muted small">(${r.plan.done_count}/${r.plan.total} · ${r.plan.llm_provider})</span>` : ''}</h3>
             <div class="checklist">${steps}</div>
@@ -88,6 +88,8 @@ const CommandView = (() => {
         const plan = document.getElementById('cmd-plan');
         const r = rows.find(x => x.id === selected) || (selected ? window._cmdSelectedCache : null);
         plan.innerHTML = planHtml(r);
+        const profHost = plan.querySelector('#cmd-profile');
+        if (profHost && window.ClinicalProfile) ClinicalProfile.mount(profHost, r.patient_id);
         const feverHost = plan.querySelector('#fever-panel-host');
         if (feverHost && window.FeverPanel) FeverPanel.mount(feverHost, r.id); else if (window.FeverPanel) FeverPanel.unmount();
         plan.querySelectorAll('input[data-step]').forEach(cb => cb.addEventListener('change', async () => {

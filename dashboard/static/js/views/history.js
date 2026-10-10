@@ -21,7 +21,7 @@ const HistoryView = (() => {
         let h;
         try { h = await Api.get(`/api/records/${selected}/history`); } catch (e) { b.innerHTML = `<div class="view-error">${Api.esc(e.message)}</div>`; return; }
         const p = h.patient;
-        b.innerHTML = `<div class="card"><h3>${Api.esc(p.full_name)} · ${p.code} · ${p.age} ans · groupe ${p.blood_group}</h3><div class="small">Allergies : ${p.allergies ? `<span class="tag tag-danger">${Api.esc(p.allergies)}</span>` : 'aucune connue'} · Risque de chute : ${p.fall_risk} · Antécédents : ${Api.esc(p.history || '—')}</div></div>`
+        b.innerHTML = `<div id="hist-profile"></div><div class="card"><h3>${Api.esc(p.full_name)} · ${p.code} · ${p.age} ans · groupe ${p.blood_group}</h3><div class="small">Allergies : ${p.allergies ? `<span class="tag tag-danger">${Api.esc(p.allergies)}</span>` : 'aucune connue'} · Risque de chute : ${p.fall_risk} · Antécédents : ${Api.esc(p.history || '—')}</div></div>`
             + h.admissions.map(a => `<div class="card">
                 <h3>${a.active ? '🛏️ Séjour en cours' : '📁 Séjour'} — chambre ${a.room} · du ${Api.fmtDate(a.admitted_at)} ${a.discharged_at ? 'au ' + Api.fmtDate(a.discharged_at) : ''} · ${Api.esc(a.reason)} <span class="muted small">(${Api.esc(a.referring_doctor)})</span></h3>
                 <div class="grid-2">
@@ -31,6 +31,7 @@ const HistoryView = (() => {
                     <b class="small">Traitements</b><ul class="small">${a.treatments.map(t => `<li>${Api.esc(t.dci)} (${Api.esc(t.brand)}) ${Api.esc(t.posology)} ${t.route}${t.end ? ' — arrêté' : ''}</li>`).join('') || '<li class="muted">aucun</li>'}</ul>
                     <b class="small">Humeur observée</b> <span class="small">${Object.keys(a.moods).length ? Object.entries(a.moods).map(([m, n]) => `${MOOD[m] || m} ×${n}`).join(', ') : 'non évaluée'} · ${a.snapshots} observations de posture</span></div>
                 </div></div>`).join('');
+        if (window.ClinicalProfile) ClinicalProfile.mount(document.getElementById('hist-profile'), selected);
     }
 
     function select(pid) { selected = pid; if (mounted && host) render(host); }

@@ -1412,6 +1412,9 @@ const HospitalScene = (() => {
     function animate() {
         animationId = requestAnimationFrame(animate);
         const now = performance.now();
+        // Une vue HTML recouvre le jumeau : la scène reste vivante mais n'est redessinée que 2 fois par seconde
+        // (sans carte graphique, une image coûte cher et figeait les vues).
+        if (document.body.classList.contains('view-open')) { if (now - (animate.lastHidden || 0) < 500) return; animate.lastHidden = now; }
         stepTween(now);
         const walking = typeof HospitalFloors !== 'undefined' && HospitalFloors.isWalking();
         if (!walking && !camTween) controls.update();
