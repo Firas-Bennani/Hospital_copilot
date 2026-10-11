@@ -45,6 +45,8 @@ PERMISSIONS: dict[str, set[str]] = {
     "write_medical_docs": DOCTORS,
     "view_history": CLINICAL,
     "manage_users": {"owner"},
+    # V3 (Privacy by Design) : identité complète du patient (nom, prénom, date de naissance) ; les autres rôles voient le pseudonyme
+    "view_identity": {"receptionist", "nurse", "duty_doctor", "general_doctor", "owner", "psychiatrist"},
     # V2 — dossier médical : lecture/écriture médecins + psychiatre, lecture infirmiers, vues restreintes sinon
     "view_medical_record": {"nurse"} | DOCTORS | PSY,
     "write_medical_record": DOCTORS | PSY,

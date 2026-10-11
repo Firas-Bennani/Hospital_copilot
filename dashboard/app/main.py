@@ -137,6 +137,9 @@ def create_app() -> FastAPI:
         "predictions",
         "ambulances",
         "print",
+        "fhir",       # V3 : interopérabilité HL7 FHIR R4
+        "integrity",  # V3 : intégrité des trames IoT
+        "sadm",       # V3 : validation / rejet des recommandations
     ):
         mod = _import_optional(f".api.{name}")
         if mod is not None and hasattr(mod, "router"):
