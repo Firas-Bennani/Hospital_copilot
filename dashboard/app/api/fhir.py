@@ -6,8 +6,9 @@ API HL7 FHIR R4 en LECTURE SEULE (V3, étape 4 — interopérabilité).
     GET /fhir/Observation?patient=              constantes vitales (LOINC / UCUM) + biologie
     GET /fhir/Condition?patient=                maladies chroniques, antécédents, motif d'hospitalisation
     GET /fhir/AllergyIntolerance?patient=       allergies
-    GET /fhir/MedicationRequest?patient=        ordonnances de traitement hospitalières
+    GET /fhir/MedicationRequest?patient=        ordonnances de traitement hospitalières (`inpatient`) + ordonnance de sortie signée (`discharge`)
     GET /fhir/Encounter?patient=                admissions
+    GET /fhir/DocumentReference?patient=        rapports médecin signés et comptes rendus de sortie (texte pseudonymisé, base64)
     GET /fhir/Patient/{id}/$everything          Bundle de tout ce que le rôle peut lire
 
 Droits : les mêmes que le dossier médical (`app/api/dossier.py`) —
@@ -24,16 +25,18 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import re
 from typing import Any, Callable, Optional
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 
-from .. import auth as authlib, fhir as fmap, state
+from .. import auth as authlib, fhir as fmap, privacy, state
 from ..audit import audit
 from ..db import get_session, session_scope
-from ..models import Admission, LabResult, MedicalRecordEntry, Medication, Patient, Treatment, TreatmentOrder, TreatmentOrderLine, VitalReading
+from ..models import (Admission, LabResult, MedicalRecordEntry, MedicalReport, Medication, Patient, Prescription, PrescriptionLine, Treatment, TreatmentOrder,
+                      TreatmentOrderLine, VitalReading)
 
 logger = logging.getLogger("hackcure.fhir")
 
@@ -47,6 +50,7 @@ ACCESS: dict[str, set[str]] = {
     "AllergyIntolerance": {"full", "pharmacy"},
     "MedicationRequest": {"full", "pharmacy"},
     "Encounter": {"full", "identity"},
+    "DocumentReference": {"full"},
 }
 # métrique -> type d'appareil qui la mesure (horodatage et appareil de la dernière valeur en direct)
 METRIC_DEVICE = {"hr": "ecg", "rr": "ecg", "spo2": "spo2", "sys": "bp", "dia": "bp", "map": "bp", "tempC": "thermometer", "glucose": "glucometer"}
@@ -209,6 +213,48 @@ def _medication_requests(session: Session, p: Patient) -> list[dict[str, Any]]:
     if adm_ids:
         for t, med in session.exec(select(Treatment, Medication).join(Medication, Medication.id == Treatment.medication_id).where(Treatment.admission_id.in_(adm_ids)).order_by(Treatment.start.desc())).all():
             out.append(fmap.medication_request_from_treatment(t, med, p.code))
+        # ordonnance de sortie (`Prescription`) : seulement les ordonnances SIGNÉES
+        rows2 = session.exec(select(PrescriptionLine, Prescription, Medication).join(Prescription, Prescription.id == PrescriptionLine.prescription_id)
+                             .join(Medication, Medication.id == PrescriptionLine.medication_id, isouter=True)
+                             .where(Prescription.admission_id.in_(adm_ids), Prescription.status == "signed").order_by(Prescription.created_at.desc(), PrescriptionLine.id)).all()
+        out += [fmap.medication_request_from_prescription_line(line, pr, med, p.code, notes=_pseudonymise(pr.notes, p)) for line, pr, med in rows2]
+    return out
+
+
+def _pseudonymise(value: Optional[str], p: Patient) -> str:
+    """Texte qui QUITTE la plateforme : les noms de patients connus (`privacy.text`) puis, par sécurité, le nom et le prénom
+    de ce patient (sans tenir compte de la casse) sont remplacés par le pseudonyme. Appliqué quel que soit le rôle de l'appelant."""
+    out = privacy.text(value or "")
+    first, last = (p.first_name or "").strip(), (p.last_name or "").strip()
+    variants = sorted({v for v in (f"{first} {last}", f"{last} {first}", f"{last}, {first}", last, first) if len(v.strip()) >= 2}, key=len, reverse=True)
+    if variants and out:
+        out = re.sub(r"(?<![\w-])(?:" + "|".join(re.escape(v) for v in variants) + r")(?![\w-])", p.code, out, flags=re.IGNORECASE)
+    return out
+
+
+DISCHARGE_TITLE = re.compile(r"sortie|hospitalisation", re.IGNORECASE)
+
+
+def _documents(session: Session, p: Patient) -> list[dict[str, Any]]:
+    """Rapports médecin SIGNÉS (`MedicalReport`) et comptes rendus de sortie. Il n'existe pas de table « rapport de sortie » :
+    un rapport signé est un compte rendu de sortie (LOINC 18842-5) quand son séjour est terminé ou que son titre le dit
+    (« sortie », « hospitalisation ») ; sinon c'est un rapport médecin (11488-4). S'y ajoutent les comptes rendus
+    d'hospitalisation signés du dossier médical (`MedicalRecordEntry` de type « hospitalisation »). Texte toujours pseudonymisé."""
+    out: list[dict[str, Any]] = []
+    adms = {a.id: a for a in _admissions(session, p)}
+    if adms:
+        for r in session.exec(select(MedicalReport).where(MedicalReport.admission_id.in_(list(adms)), MedicalReport.status == "signed").order_by(MedicalReport.signed_at.desc(), MedicalReport.id.desc())).all():
+            adm = adms.get(r.admission_id)
+            kind = "discharge" if (adm is not None and adm.discharged_at is not None) or DISCHARGE_TITLE.search(r.title or "") else "report"
+            title = _pseudonymise(r.title, p) or "Rapport médical"
+            out.append(fmap.document_reference(f"docref-report-{r.id}", p.code, kind, title, _pseudonymise(r.content, p), when=r.signed_at or r.created_at, author=r.author,
+                                               description=title, encounter_id=f"enc-{r.admission_id}"))
+    entries = session.exec(select(MedicalRecordEntry).where(MedicalRecordEntry.patient_pk == p.id, MedicalRecordEntry.type == "hospitalisation", MedicalRecordEntry.status == "signed")
+                           .order_by(MedicalRecordEntry.date.desc())).all()
+    for e in entries:
+        title = _pseudonymise(e.title, p) or "Hospitalisation"
+        out.append(fmap.document_reference(f"docref-record-{e.id}", p.code, "discharge", title, _pseudonymise(e.content or e.summary, p), when=e.date, author=e.author,
+                                           description=_pseudonymise(e.summary, p) or title, encounter_id=f"enc-{e.admission_id}" if e.admission_id else None))
     return out
 
 
@@ -248,6 +294,7 @@ def patient_everything(patient_id: str, request: Request, session: Session = Dep
         ("AllergyIntolerance", lambda: _allergies(session, p)),
         ("MedicationRequest", lambda: _medication_requests(session, p)),
         ("Observation", lambda: _observations(session, p)),
+        ("DocumentReference", lambda: _documents(session, p)),
     ]
     included = ["Patient"]
     for rtype, load in loaders:
@@ -297,3 +344,9 @@ def search_medication_request(request: Request, patient: Optional[str] = None, s
 @fhir_route
 def search_encounter(request: Request, patient: Optional[str] = None, subject: Optional[str] = None, session: Session = Depends(get_session)):
     return _search(request, session, "Encounter", patient or subject, lambda s, p, scope: _encounters(s, p, scope))
+
+
+@router.get("/DocumentReference")
+@fhir_route
+def search_document_reference(request: Request, patient: Optional[str] = None, subject: Optional[str] = None, session: Session = Depends(get_session)):
+    return _search(request, session, "DocumentReference", patient or subject, lambda s, p, _scope: _documents(s, p))

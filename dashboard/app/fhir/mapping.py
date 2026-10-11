@@ -11,6 +11,7 @@ Règles :
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from datetime import date, datetime, timezone
@@ -72,6 +73,16 @@ UCUM_UNITS = {
 }
 ROUTES = {"PO": "voie orale", "IV": "voie intraveineuse", "SC": "voie sous-cutanée", "IM": "voie intramusculaire", "INH": "voie inhalée"}
 ORDER_STATUS = {"draft": "draft", "active": "active", "stopped": "stopped"}
+SNOMED = "http://snomed.info/sct"
+# voies dont le code SNOMED CT est sans ambiguïté ; la voie inhalée reste en texte seul
+ROUTE_SNOMED = {"PO": ("26643006", "Oral route"), "IV": ("47625008", "Intravenous route"), "SC": ("34206005", "Subcutaneous route"), "IM": ("78421000", "Intramuscular route")}
+MEDREQ_CATEGORY = "http://terminology.hl7.org/CodeSystem/medicationrequest-category"
+DOSE_TEXT_EXT = "urn:hackcure:fhir:dose-text"            # dose en texte quand elle ne se lit pas « nombre + unité »
+FREQUENCY_TEXT_EXT = "urn:hackcure:fhir:frequency-text"  # fréquence en texte quand elle n'est pas reconnue
+# unité de dose (en minuscules) -> code UCUM ; les autres unités (« bouffées », « cp ») sont exportées sans `system` / `code`
+DOSE_UNITS = {"mg": "mg", "g": "g", "µg": "ug", "μg": "ug", "mcg": "ug", "ug": "ug", "ml": "mL", "l": "L", "ui": "[iU]", "mmol": "mmol"}
+# nature du document -> (code LOINC, libellé LOINC, libellé français)
+DOCUMENT_TYPES = {"report": ("11488-4", "Consult note", "Compte rendu médical"), "discharge": ("18842-5", "Discharge summary", "Compte rendu de sortie d'hospitalisation")}
 
 
 # ─── utilitaires ─────────────────────────────────────────────────────────────
@@ -345,7 +356,98 @@ def _med_text(dci: str, med: Any) -> str:
 
 
 def _route(route: str) -> Optional[dict[str, Any]]:
-    return {"text": ROUTES.get((route or "").upper(), route)} if route else None
+    """Voie d'administration : texte français, + code SNOMED CT pour les voies sans ambiguïté (PO, IV, SC, IM)."""
+    if not route:
+        return None
+    out: dict[str, Any] = {"text": ROUTES.get(route.upper(), route)}
+    if route.upper() in ROUTE_SNOMED:
+        code, display = ROUTE_SNOMED[route.upper()]
+        out["coding"] = [{"system": SNOMED, "code": code, "display": display}]
+    return out
+
+
+# ─── posologie structurée (dosageInstruction) ────────────────────────────────
+_NUMBER = r"(\d+(?:[.,]\d+)?)"
+_UNIT = r"([A-Za-zµμ%][^\s/\d]*)"
+_PER_DAY = re.compile(r"(?<![\d.,])(?:x\s*)?(\d{1,2})\s*(?:x|fois)?\s*(?:/|par)\s*(jours?|j|24\s*h|semaines?|sem)(?![A-Za-zÀ-ÿ])", re.IGNORECASE)
+_EVERY_H = re.compile(r"toutes?\s+les\s+(\d{1,2})\s*(?:h|heures?)(?![A-Za-zÀ-ÿ])", re.IGNORECASE)
+_WHEN = (("matin", "MORN"), ("midi", "NOON"), ("soir", "EVE"), ("coucher", "HS"))
+
+
+def _dose_quantity(value: str, unit: str) -> Optional[dict[str, Any]]:
+    try:
+        n = _num(float(value.replace(",", ".")))
+    except ValueError:
+        return None
+    if n is None:
+        return None
+    q: dict[str, Any] = {"value": n, "unit": unit}
+    if unit.lower() in DOSE_UNITS:
+        q.update(system=UCUM, code=DOSE_UNITS[unit.lower()])
+    return q
+
+
+def parse_dose(text: str) -> Optional[dict[str, Any]]:
+    """« 500 mg », « 0,5 mg », « 12 UI », « 4 bouffées » → Quantity ; tout autre texte (« 1 à 2 cp », « 500 mg le matin ») → None."""
+    m = re.fullmatch(r"\s*" + _NUMBER + r"\s*" + _UNIT + r"\s*", text or "")
+    return _dose_quantity(m.group(1), m.group(2)) if m else None
+
+
+def parse_frequency(text: str) -> Optional[dict[str, Any]]:
+    """Fréquence en texte libre → champs de `timing.repeat`, seulement pour les formes sans ambiguïté :
+    « 3/j », « x3/j », « 2 fois/j », « 3 fois par jour », « 1 fois par semaine », « toutes les 8 h », « matin et soir ».
+    Renvoie None quand le texte n'est pas reconnu (la fréquence reste alors en texte : rien n'est inventé)."""
+    t = text or ""
+    low = t.lower()
+    when = [code for word, code in _WHEN if re.search(r"(?<![a-zà-ÿ])" + word + r"(?![a-zà-ÿ])", low)]
+    out: dict[str, Any] = {}
+    m = _PER_DAY.search(t)
+    if m:
+        unit = m.group(2).lower()
+        out = {"frequency": int(m.group(1)), "period": 1, "periodUnit": "wk" if unit.startswith("sem") else "d"}
+    else:
+        m = _EVERY_H.search(t)
+        if m and int(m.group(1)) > 0:
+            out = {"frequency": 1, "period": int(m.group(1)), "periodUnit": "h"}
+        elif when:
+            out = {"frequency": len(when), "period": 1, "periodUnit": "d"}
+    if not out or out["frequency"] <= 0:
+        return None
+    if when and out["periodUnit"] == "d" and len(when) <= out["frequency"]:
+        out["when"] = when
+    return out
+
+
+def parse_posology(text: str) -> dict[str, Any]:
+    """Posologie d'un seul tenant (« 1 g x3/j », « 5 mg/j », « 500 ml/24 h ») → {dose, rate, repeat} (chaque clé seulement si reconnue)."""
+    out: dict[str, Any] = {}
+    m = re.match(r"^\s*" + _NUMBER + r"\s*" + _UNIT + r"\s*(.*)$", text or "")
+    if not m:
+        rep = parse_frequency(text)
+        return {"repeat": rep} if rep else out
+    dose, rest = _dose_quantity(m.group(1), m.group(2)), m.group(3).strip()
+    over = re.fullmatch(r"/\s*(\d{1,3})\s*h", rest)
+    if over and dose is not None:                                    # débit : « 500 ml/24 h »
+        out["rate"] = {"numerator": dose, "denominator": {"value": int(over.group(1)), "unit": "h", "system": UCUM, "code": "h"}}
+        return out
+    if dose is not None:
+        out["dose"] = dose
+    rep = {"frequency": 1, "period": 1, "periodUnit": "d"} if re.fullmatch(r"/\s*(?:j|jour)", rest, re.IGNORECASE) else parse_frequency(rest)
+    if rep:
+        out["repeat"] = rep
+    return out
+
+
+def _bounds(days: Any) -> Optional[dict[str, Any]]:
+    try:
+        n = int(days or 0)
+    except (TypeError, ValueError):
+        return None
+    return {"value": n, "unit": "jour", "system": UCUM, "code": "d"} if n > 0 else None
+
+
+def _med_category(code: str, display: str) -> list[dict[str, Any]]:
+    return [{"coding": [{"system": MEDREQ_CATEGORY, "code": code, "display": display}]}]
 
 
 def medication_request_from_line(line: Any, order: Any, med: Any, code: str) -> dict[str, Any]:
@@ -354,8 +456,14 @@ def medication_request_from_line(line: Any, order: Any, med: Any, code: str) -> 
     text = " · ".join(x for x in [line.dose, ROUTES.get((line.route or "").upper(), line.route), ("à " + ", ".join(times)) if times else "", "si besoin" if line.prn else "",
                                  f"pendant {line.duration_days} j" if line.duration_days else ""] if x)
     dosage: dict[str, Any] = {"text": text, "route": _route(line.route), "asNeededBoolean": bool(line.prn)}
+    dose = parse_dose(line.dose)
+    if dose is not None:
+        dosage["doseAndRate"] = [{"doseQuantity": dose}]
+    elif (line.dose or "").strip():
+        dosage["extension"] = [{"url": DOSE_TEXT_EXT, "valueString": line.dose.strip()}]
     repeat: dict[str, Any] = {}
     if times:
+        repeat.update(frequency=len(times), period=1, periodUnit="d")   # une prise par horaire programmé, chaque jour
         repeat["timeOfDay"] = [f"{int(t.split(':')[0]):02d}:{t.split(':')[1]}:00" for t in times]
     if line.duration_days:
         repeat.update(boundsDuration={"value": int(line.duration_days), "unit": "jour", "system": UCUM, "code": "d"})
@@ -387,6 +495,16 @@ def medication_request_from_line(line: Any, order: Any, med: Any, code: str) -> 
 def medication_request_from_treatment(t: Any, med: Any, code: str) -> dict[str, Any]:
     """Un traitement hospitalier en cours ou passé (`Treatment`, saisi à l'admission) → MedicationRequest."""
     when = iso(t.start) or now_iso()
+    dosage: dict[str, Any] = {"text": " · ".join(x for x in [t.posology, ROUTES.get((t.route or "").upper(), t.route)] if x), "route": _route(t.route)}
+    parsed = parse_posology(t.posology)
+    if parsed.get("dose") is not None:
+        dosage["doseAndRate"] = [{"doseQuantity": parsed["dose"]}]
+    elif parsed.get("rate") is not None:
+        dosage["doseAndRate"] = [{"rateRatio": parsed["rate"]}]
+    elif (t.posology or "").strip():
+        dosage["extension"] = [{"url": DOSE_TEXT_EXT, "valueString": t.posology.strip()}]
+    if parsed.get("repeat"):
+        dosage["timing"] = {"repeat": parsed["repeat"]}
     return _clean({
         "resourceType": "MedicationRequest",
         "id": f"medreq-treatment-{t.id}",
@@ -399,7 +517,83 @@ def medication_request_from_treatment(t: Any, med: Any, code: str) -> dict[str, 
         "encounter": {"reference": f"Encounter/enc-{t.admission_id}"} if t.admission_id else None,
         "authoredOn": when,
         "requester": {"display": t.prescriber} if t.prescriber else None,
-        "dosageInstruction": [_clean({"text": " · ".join(x for x in [t.posology, ROUTES.get((t.route or "").upper(), t.route)] if x), "route": _route(t.route)})],
+        "dosageInstruction": [_clean(dosage)],
+    })
+
+
+def medication_request_from_prescription_line(line: Any, prescription: Any, med: Any, code: str, notes: str = "") -> dict[str, Any]:
+    """Une ligne de l'ORDONNANCE DE SORTIE signée (`Prescription` + `PrescriptionLine`) → MedicationRequest de catégorie `discharge`.
+
+    `notes` : note libre de l'ordonnance, déjà pseudonymisée par l'appelant. Dose, fréquence, durée et voie sont celles de la ligne :
+    rien n'est déduit ; une fréquence en texte non reconnue reste en texte (pas de `timing.repeat.frequency`)."""
+    route_text = ROUTES.get((line.route or "").upper(), line.route)
+    bounds = _bounds(line.duration_days)
+    text = " · ".join(x for x in [(line.dosage or "").strip(), (line.frequency or "").strip(), route_text, f"pendant {bounds['value']} j" if bounds else ""] if x) or "Posologie non précisée"
+    dosage: dict[str, Any] = {"text": text, "route": _route(line.route)}
+    extensions: list[dict[str, Any]] = []
+    dose = parse_dose(line.dosage)
+    if dose is not None:
+        dosage["doseAndRate"] = [{"doseQuantity": dose}]
+    elif (line.dosage or "").strip():
+        extensions.append({"url": DOSE_TEXT_EXT, "valueString": line.dosage.strip()})
+    repeat: dict[str, Any] = dict(parse_frequency(line.frequency) or {})
+    if not repeat and (line.frequency or "").strip():
+        extensions.append({"url": FREQUENCY_TEXT_EXT, "valueString": line.frequency.strip()})
+    if bounds:
+        repeat["boundsDuration"] = bounds
+    timing: dict[str, Any] = {"repeat": repeat} if repeat else {}
+    if (line.frequency or "").strip():
+        timing["code"] = {"text": line.frequency.strip()}
+    dosage["timing"] = timing
+    dosage["extension"] = extensions
+    when = iso(prescription.signed_at) or iso(prescription.created_at) or now_iso()
+    note = [{"text": notes}] if notes else []
+    if getattr(line, "allergy_warning", False):
+        note.append({"text": "Alerte allergie signalée à la prescription"})
+    return _clean({
+        "resourceType": "MedicationRequest",
+        "id": f"medreq-prescription-{prescription.id}-line-{line.id}",
+        "meta": {"lastUpdated": when},
+        "status": "active" if prescription.status == "signed" else "draft",
+        "intent": "order",
+        "category": _med_category("discharge", "Discharge"),
+        "medicationCodeableConcept": {"text": _med_text("", med)},
+        "subject": _ref(code),
+        "encounter": {"reference": f"Encounter/enc-{prescription.admission_id}"} if prescription.admission_id else None,
+        "authoredOn": when,
+        "requester": {"display": prescription.prescriber} if prescription.prescriber else None,
+        "groupIdentifier": {"system": "urn:hackcure:discharge-prescription", "value": str(prescription.id)},
+        "dosageInstruction": [_clean(dosage)],
+        "note": note,
+    })
+
+
+# ─── DocumentReference ───────────────────────────────────────────────────────
+def document_reference(rid: str, code: str, kind: str, title: str, text: str, when: Any = None, author: str = "", description: str = "", encounter_id: Optional[str] = None) -> dict[str, Any]:
+    """Un document signé → DocumentReference. `kind` : « report » (rapport médecin, LOINC 11488-4) ou « discharge »
+    (compte rendu de sortie, LOINC 18842-5). `title`, `description` et `text` doivent être DÉJÀ pseudonymisés par l'appelant
+    (le routeur, qui connaît les noms des patients) : cette fonction se contente d'encoder le texte en base64 (UTF-8)."""
+    loinc, display, label = DOCUMENT_TYPES.get(kind, DOCUMENT_TYPES["report"])
+    date_ = iso(when) or now_iso()
+    return _clean({
+        "resourceType": "DocumentReference",
+        "id": rid,
+        "meta": {"lastUpdated": date_, "security": [PSEUDONYMISED_TAG]},
+        "status": "current",
+        "docStatus": "final",
+        "type": {"coding": [{"system": LOINC, "code": loinc, "display": display}], "text": label},
+        "subject": _ref(code),
+        "date": date_,
+        "author": [{"display": author}] if author else None,
+        "description": description or title,
+        "content": [{"attachment": _clean({
+            "contentType": "text/plain; charset=utf-8",
+            "language": "fr",
+            "data": base64.b64encode((text or "").encode("utf-8")).decode("ascii"),
+            "title": title,
+            "creation": date_,
+        })}],
+        "context": {"encounter": [{"reference": f"Encounter/{encounter_id}"}]} if encounter_id else None,
     })
 
 
@@ -462,6 +656,7 @@ def capability_statement(base_url: str) -> dict[str, Any]:
                 res("AllergyIntolerance", ["search-type"], patient_param),
                 res("MedicationRequest", ["search-type"], patient_param),
                 res("Encounter", ["search-type"], patient_param),
+                res("DocumentReference", ["search-type"], patient_param),
             ],
         }],
     }

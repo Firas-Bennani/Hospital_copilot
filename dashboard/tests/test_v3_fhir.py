@@ -149,7 +149,7 @@ def test_everything_bundle(client):
     b = _check_bundle(client.get("/fhir/Patient/PAT-0002/$everything"))
     res = _resources(b)
     assert res[0]["resourceType"] == "Patient" and res[0]["id"] == "PAT-0002"
-    assert {r["resourceType"] for r in res} == {"Patient", "Encounter", "Condition", "AllergyIntolerance", "MedicationRequest", "Observation"}
+    assert {r["resourceType"] for r in res} == {"Patient", "Encounter", "Condition", "AllergyIntolerance", "MedicationRequest", "Observation", "DocumentReference"}
     ids = [(r["resourceType"], r["id"]) for r in res]
     assert len(ids) == len(set(ids))
     for r in res[1:]:
@@ -163,7 +163,7 @@ def test_metadata(client):
     cs = r.json()
     assert cs["resourceType"] == "CapabilityStatement" and cs["fhirVersion"] == "4.0.1" and cs["kind"] == "instance" and FHIR_JSON in cs["format"]
     types = {x["type"]: x for x in cs["rest"][0]["resource"]}
-    assert set(types) == {"Patient", "Observation", "Condition", "AllergyIntolerance", "MedicationRequest", "Encounter"}
+    assert set(types) == {"Patient", "Observation", "Condition", "AllergyIntolerance", "MedicationRequest", "Encounter", "DocumentReference"}
     assert all(i["code"] in ("read", "search-type") for x in types.values() for i in x["interaction"])              # lecture seule
 
 
