@@ -1,1 +1,7 @@
 /* HackCure V3 — styles additifs (SADM, intégrité des trames, export FHIR). */
+
+/* FHIR — début (bouton « Exporter en FHIR » du dossier médical, js/v3/fhir-export.js) */
+.fhir-export-btn { white-space: nowrap; border-color: rgba(56, 189, 248, .55); color: #7dd3fc; }
+.fhir-export-btn:hover:not(:disabled) { background: rgba(56, 189, 248, .14); }
+.fhir-export-btn:disabled { opacity: .6; cursor: progress; }
+/* FHIR — fin */
