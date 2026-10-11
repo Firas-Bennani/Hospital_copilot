@@ -280,7 +280,13 @@ flowchart TD
 
 ---
 
-## 4. Ce que la V3 ajoute (conception — voir `PROGRESS_V3.md` pour l'état réel)
+## 4. Ce que la V3 ajoute
+
+> **État réel à la fin de la nuit (11/10)** — les mécanismes V3 décrits ci-dessous sont tous dans le dépôt et couverts par des tests
+> automatiques. Ce qui a été lancé en conditions réelles et ce qui ne l'a pas été est dans `MORNING_REPORT.md`, section V3
+> (tableau « Vérifié / non vérifié »). En résumé : HTTPS TLS 1.3, chiffrement AES-256-GCM, HMAC des trames, FHIR, pseudonymisation et
+> SADM ont tourné ensemble sur un serveur de test ; **Docker n'a pas pu être exécuté**, MQTT sur TLS et un vrai Raspberry Pi **n'ont pas été testés**.
+
 
 Les points d'accroche existent déjà : `main.py` charge, s'ils sont présents, les routeurs `api/fhir`, `api/integrity`, `api/sadm` ; `index.html` charge `js/v3/sadm.js`, `js/v3/fhir-export.js`, `js/v3/frame-integrity.js` ; `auth.py` contient la permission `view_identity`. Au moment de la rédaction, ces fichiers JavaScript sont des coquilles vides et les trois routeurs ne sont pas dans cet arbre de travail.
 
@@ -335,7 +341,7 @@ Sources : `requirements.txt`, `edge/requirements.txt`, `computer_vision/requirem
 | Leaflet 1.9.4 + tuiles OpenStreetMap | Carte des ambulances | `js/views/ambulances.js` |
 | n8n | Orchestration du raisonnement, attentes, escalades, Telegram | `n8n/workflows/*.json`, `n8n/setup_n8n.py` |
 | Mosquitto 2 | Broker MQTT | `docker-compose.yml`, `docker/mosquitto.conf` |
-| cryptography | AES-256-GCM, certificat TLS (V3, **activable**) | à vérifier dans `PROGRESS_V3.md` — absent de `requirements.txt` au moment de la rédaction |
+| cryptography | AES-256-GCM, certificat TLS (V3, **activable**) | `dashboard/app/crypto.py`, `scripts/make_cert.py` (dans `requirements.txt` ; import paresseux : la plateforme démarre sans) |
 | Docker / Compose | Conteneurisation (V3) | `Dockerfile`, `docker-compose.yml` |
 
 ---

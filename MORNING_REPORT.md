@@ -199,3 +199,79 @@ Démo : bouton **Lancer la démo → `full_demo_v2`** (8 min, tout est joué aut
 - Sur cette machine le port 8000 est occupé par un autre projet : les tests réels de la V2 ont été faits sur le port 8010.
 - Navigateur sans carte graphique : la 3D est lente (le serveur n'est pas en cause).
 - `.env` (clé Anthropic, Telegram, `N8N_*`) n'est jamais commité ; les JSON de `n8n/workflows/` ne contiennent aucun secret.
+
+---
+
+# V3 — conformité au cahier des charges (nuit du 10 au 11/10, branche `feat/v2`)
+
+Points de retour : tags `v2-stable` et `v2-pre-conformite`. Avancement : `PROGRESS_V3.md` (8 étapes cochées). Décisions : `DECISIONS.md`.
+Tout a été développé et testé **sans crédit d'API** : `LLM_PROVIDER=mock`, `N8N_ENABLED=false`.
+
+## V3.1 Ce qui est actif par défaut, et ce qu'il faut activer
+
+| Mécanisme | Par défaut | Pour l'activer | Si la clé ou le certificat manque |
+|---|---|---|---|
+| Pseudonymisation de ce qui sort (LLM, n8n, Telegram, journaux) | **actif** | `PSEUDONYMIZE_OUTBOUND=1` | — |
+| Identité complète réservée aux rôles `view_identity` | **actif** | — | — |
+| Journal d'audit avec adresse IP | **actif** | — | — |
+| SADM (indice de confiance, déclencheurs, Valider / Rejeter, bandeau) | **actif** | `SADM_ENABLED=1` | — |
+| API FHIR R4 en lecture + bouton « Exporter en FHIR » | **actif** | `FHIR_ENABLED=1` | — |
+| HTTPS, TLS 1.3 minimum | inactif | `HTTPS=true` (+ `scripts/make-cert`, sinon créé au démarrage) | démarrage en HTTP + avertissement |
+| Chiffrement au repos AES-256-GCM | inactif | `scripts/make-key --write` (écrit `DATA_ENCRYPTION_KEY`) | données en clair + avertissement |
+| Intégrité des trames HMAC-SHA256 | inactif (mode démo) | `scripts/make-key --write` (écrit `EDGE_HMAC_KEY`), même clé sur le Pi | trames acceptées + avertissement sur la page Machines |
+| MQTT sur TLS | inactif | `MQTT_TLS=1`, port 8883, `docker/mosquitto-tls.conf` | MQTT en clair ou repli HTTP |
+| Docker | — | `scripts/run-docker.ps1` | — |
+
+L'état courant est visible dans `GET /health` (champ `security`, avec la liste des avertissements) et au démarrage du serveur (« SÉCURITÉ — … »).
+
+**Pour la démo de 8h, le plus sûr est de ne rien activer de plus** : tout ce qui est « actif par défaut » se montre sans configuration, et
+l'écran reste en `http://localhost:8000` sans avertissement de certificat. Pour montrer le chiffrement et le HMAC au jury :
+
+```powershell
+.\scripts\make-key.ps1 --write      # DATA_ENCRYPTION_KEY + EDGE_HMAC_KEY dans .env (ne remplace jamais une clé existante)
+.\scripts\run-demo.ps1 -Reset       # base neuve chiffrée ; page Machines : « Vérification HMAC-SHA256 active »
+# HTTPS en plus : ajouter HTTPS=true dans .env → https://localhost:8000 (accepter l'avertissement du navigateur)
+```
+**Attention** : une fois la base chiffrée, garder la même `DATA_ENCRYPTION_KEY` (sinon les noms et les documents s'affichent « 🔒 chiffré » ;
+remettre la clé ou relancer avec `-Reset`). Ne pas activer la clé HMAC si un simulateur autonome ou `camera_loop.py` tourne sans cette clé :
+leurs trames seraient refusées.
+
+## V3.2 Vérifié / non vérifié
+
+| Étape | Tests automatiques | Lancé en conditions réelles | Non vérifié |
+|---|---|---|---|
+| 1 Docker | structure du `Dockerfile` et du compose, sonde de santé | `docker compose config` valide | **Image jamais construite ni lancée** : le démon Docker de la machine ne répondait pas (voir `BLOCKERS.md`). À tester : `scripts/run-docker.ps1`, attendre « healthy ». |
+| 2 Pseudonymisation | aucun nom de patient dans les prompts, les webhooks, Telegram, les journaux ; pharmacien sans identité | serveur de test : explications d'IA en « PAT-0002 » | avec le vrai LLM et n8n (pas de crédit) |
+| 3 TLS / AES / audit | AES-GCM, donnée altérée, sans clé, migration, recherche, poignée de main TLS 1.3 acceptée et 1.2 refusée, audit avec IP | serveur HTTPS sur le port 8010 : TLS 1.2 refusé, base chiffrée sur disque, `/health` sans avertissement | MQTT sur TLS contre un broker ; n8n face à un serveur HTTPS auto-signé ; navigateur réel en HTTPS |
+| 4 FHIR | structure de chaque ressource, codes LOINC, pseudonymes, rôles, audit | `/fhir/Patient` et 154 observations lus sur le serveur de test ; bouton présent dans le dossier | validateur officiel HL7 non utilisé ; table LOINC de biologie écrite de mémoire ; téléchargement du fichier non essayé |
+| 5 Intégrité des trames | trame valide, signature fausse, rejeu, trop ancienne, non signée, mode démo | simulateur embarqué : 3 860 trames signées vérifiées, 0 rejet ; trame non signée refusée (401) ; carte « HMAC-SHA256 active » | chemin MQTT, vrai Raspberry Pi |
+| 6 SADM | formules de l'indice, explication de chaque type de recommandation, décisions tracées, garde-fous de rôle | captures `docs/screenshots/v3/` : bandeau, bande sur risque / diagnostics / prédictions / psychologie, boutons dans la cloche | clic réel sur Valider / Signer dans un navigateur (testés par l'API seulement) ; bloc « À signer » non capturé (aucune ordonnance en brouillon au moment de la capture) ; aucun test avec des soignants |
+| 7 Documents | — | relus, état réel ajouté en tête | chiffres de coût = estimations ; points juridiques INPDP / RGPD à confirmer avec un juriste ; sections 4-5-6 reconstruites (texte officiel du cahier des charges absent du dépôt) |
+| 8 Final | **263 tests verts** (dont `full_demo_v2` en mock) | captures de non-régression 3D (`01`, `02`) | `full_demo_v2` n'a pas été rejoué à la main dans un navigateur cette nuit |
+
+Les étapes 4, 5 et 7 ont été réalisées par des sous-agents en parallèle, dans des arbres de travail séparés, puis intégrées une par une.
+Les suites complètes intermédiaires lancées en parallèle des captures ont été faussées par la saturation de la machine (un test de délai
+d'escalade a échoué une fois sous charge, puis passé) : le résultat qui fait foi est la suite complète finale, lancée seule.
+
+## V3.3 Ce que montre l'interface
+
+- **Bandeau permanent** en bas : « Recommandation consultative — la décision et la signature restent celles du médecin ».
+- **Centre de commande, Diagnostics live, Prédictions, Psychologie, parcours fièvre** : sous chaque recommandation, l'indice de confiance
+  (formule en infobulle), les paramètres déclencheurs, Valider / Rejeter.
+- **Cloche** : Valider / Rejeter directement sur une alerte ; bloc « À signer » pour les médecins.
+- **Paramètres des machines** : carte « Intégrité des trames ».
+- **Dossier médical** : bouton « Exporter en FHIR ».
+- Les textes rédigés par l'IA désignent le patient par son pseudonyme (« PAT-0002 ») : c'est voulu (rien de nominatif ne part vers le LLM).
+  Le nom reste affiché à côté pour les soignants.
+
+## V3.4 Documents
+
+`docs/ARCHITECTURE.md`, `docs/CONFORMITE.md`, `docs/DEPLOIEMENT.md`, `docs/QA_JURY.md` (jury) ; `docs/securite.md`, `docs/interoperabilite.md`,
+`docs/integrite-trames.md`, `docs/ergonomie.md`, `docs/biais.md` (par mécanisme) ; `docs/demo_v2.md` (déroulé de la démonstration, inchangé).
+
+## V3.5 Points d'attention pour 8h
+
+- **Crédit Anthropic toujours épuisé** : garder `LLM_PROVIDER=mock` et `N8N_ENABLED=false` dans `.env`, ou recharger le crédit.
+- Un serveur de la plateforme tourne déjà sur le port 8000 depuis 01h06 (lancé hors de cette session) : il n'a pas les changements V3 ;
+  le relancer (`.\scripts\run-demo.ps1 -Reset`) pour les avoir.
+- La machine était saturée cette nuit (CPU à 100 %, 1 Go de mémoire libre, Docker Desktop en erreur) : fermer ce qui n'est pas utile avant la démo.

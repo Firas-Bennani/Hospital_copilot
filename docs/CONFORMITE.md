@@ -1,6 +1,11 @@
 # Conformité — Hospital Copilot (HackCure)
 
-**État au moment de la rédaction : voir `PROGRESS_V3.md` pour ce qui est réellement terminé et testé.**
+> **État réel à la fin de la nuit (11/10)** — les mécanismes V3 décrits ci-dessous sont tous dans le dépôt et couverts par des tests
+> automatiques. Ce qui a été lancé en conditions réelles et ce qui ne l'a pas été est dans `MORNING_REPORT.md`, section V3
+> (tableau « Vérifié / non vérifié »). En résumé : HTTPS TLS 1.3, chiffrement AES-256-GCM, HMAC des trames, FHIR, pseudonymisation et
+> SADM ont tourné ensemble sur un serveur de test ; **Docker n'a pas pu être exécuté**, MQTT sur TLS et un vrai Raspberry Pi **n'ont pas été testés**.
+
+*Rédaction initiale : en parallèle du développement ; les lignes « activable » décrivent des fonctions désormais présentes, à activer par `.env`.*
 
 Les fonctions marquées « activable » sont celles de la V3, développées en parallèle de ce document. Elles sont décrites ici **telles que conçues**, pas telles que testées. Avant de répondre au jury sur l'une d'elles, ouvrez `PROGRESS_V3.md` et vérifiez que la case est cochée.
 

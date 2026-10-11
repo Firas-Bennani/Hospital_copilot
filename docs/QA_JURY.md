@@ -2,7 +2,7 @@
 
 Chaque réponse tient en quelques phrases que vous pouvez dire telles quelles, suivies du fichier qui la prouve.
 Règle d'or : ne jamais annoncer un chiffre qui n'est pas dans le dépôt. Quand ce n'est pas mesuré, dites « non mesuré, c'est prévu dans le pilote ».
-Pour tout ce qui concerne la V3 (Docker, TLS, AES, HMAC, FHIR, pseudonymisation, SADM), vérifiez d'abord `PROGRESS_V3.md` : ne dites « c'est fait » que si la case est cochée.
+Pour tout ce qui concerne la V3 (Docker, TLS, AES, HMAC, FHIR, pseudonymisation, SADM) : les huit cases de `PROGRESS_V3.md` sont cochées, mais « fait » ne veut pas dire « testé en conditions réelles ». Avant de répondre, lisez le tableau « Vérifié / non vérifié » de `MORNING_REPORT.md` (section V3). Deux réponses à ne pas enjoliver : **Docker n'a jamais été lancé** (fichiers validés seulement), et **rien n'a tourné sur un vrai Raspberry Pi**.
 
 ---
 
@@ -173,7 +173,7 @@ Sans oublier l'intégration continue du travail d'Amal sans casser sa 3D (`AMAL_
 | 7 rôles | `dashboard/app/auth.py` (`ROLES`) |
 | 4 chambres | `dashboard/app/ingest/handler.py` (`ROOMS`) |
 | 32 fichiers de scénario, dont 17 de résolution | `simulator/scenarios/` |
-| 215 tests verts lors de la dernière synchronisation (LLM en mock, n8n coupé) | `MORNING_REPORT.md` V2.3 — non rejoués pour ce document |
+| 263 tests verts à la fin de la V3 (LLM en mock, n8n coupé) | `MORNING_REPORT.md`, section V3 |
 | Escalade sans visite : 2 min (critique), 10 min (élevé), 30 min (moyen) | `dashboard/app/config.py` |
 | Environ 50 appels au LLM pour un passage complet de `full_demo_v2` | `BLOCKERS.md` |
 | Vision, modèle à deux classes, jeu de test : précision 0,92, rappel 0,93 | `computer_vision/reports/evaluation_report.md` |

@@ -45,6 +45,16 @@ Le simulateur embarqué alimente les appareils des 4 chambres et les chambres vi
   `docker compose config`, l'image n'a pas été construite. Test à faire sur une machine avec Docker : `run-docker`, attendre « healthy »,
   ouvrir http://localhost:8000, lancer `full_demo_v2`.
 
+## V3 — conformité (sécurité, interopérabilité, aide à la décision)
+Actif par défaut : pseudonymisation de tout ce qui sort (LLM, n8n, Telegram, journaux), identité réservée aux rôles autorisés, journal
+d'audit avec IP, API **HL7 FHIR R4** en lecture (`/fhir/...`), SADM (indice de confiance, déclencheurs, Valider / Rejeter).
+À activer par `.env` : **HTTPS TLS 1.3** (`HTTPS=true`, `scripts/make-cert`), **chiffrement au repos AES-256-GCM** et **intégrité des trames
+HMAC-SHA256** (`scripts/make-key --write`). Sans clé ni certificat, la plateforme démarre quand même et l'indique (`GET /health`, champ `security`).
+Documents : [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/CONFORMITE.md`](docs/CONFORMITE.md), [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md),
+[`docs/QA_JURY.md`](docs/QA_JURY.md), [`docs/securite.md`](docs/securite.md), [`docs/interoperabilite.md`](docs/interoperabilite.md),
+[`docs/integrite-trames.md`](docs/integrite-trames.md), [`docs/ergonomie.md`](docs/ergonomie.md), [`docs/biais.md`](docs/biais.md).
+État réel et limites : `MORNING_REPORT.md`, section V3.
+
 ## Options
 | Besoin | Commande |
 |---|---|
