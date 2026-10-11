@@ -9,6 +9,9 @@ mqtt:
   host: "192.168.1.10"              # broker Mosquitto (docker compose up -d) ; vide = HTTP seulement
   port: 1883
   prefix: "hackcure"
+  # MQTT sur TLS (V3) : tls: true, port: 8883, ca_file: chemin de l'autorité du broker (voir docs/securite.md)
+  # tls: true
+  # ca_file: "/home/pi/hackcure/ca.crt"
 
 camera:
   source: 0                         # index webcam / chemin vidéo / URL RTSP ; "picamera" pour libcamera

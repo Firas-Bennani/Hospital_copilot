@@ -172,14 +172,18 @@ class HttpTransport:
 
 
 class MqttTransport:
-    def __init__(self, host: str, port: int, room: str, prefix: str = "hackcure", hmac_key: Optional[str] = None):
+    def __init__(self, host: str, port: int, room: str, prefix: str = "hackcure", hmac_key: Optional[str] = None, tls: bool = False, ca_file: Optional[str] = None):
         import paho.mqtt.client as mqtt
 
         self.signer = build_signer(hmac_key)
         self.room, self.prefix = room, prefix
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2) if hasattr(mqtt, "CallbackAPIVersion") else mqtt.Client()
         self.client.on_message = self._on_message
-        self.client.on_connect = lambda *a, **k: logger.info("MQTT connecté %s:%s", host, port)
+        self.client.on_connect = lambda *a, **k: logger.info("MQTT connecté %s:%s%s", host, port, " (TLS)" if tls else "")
+        if tls:  # V3 : chiffrement en transit entre le Pi et le broker (port 8883) ; ca_file = autorité qui a signé le certificat du broker
+            import ssl
+
+            self.client.tls_set(ca_certs=ca_file or None, tls_version=ssl.PROTOCOL_TLS_CLIENT)
         self.client.connect(host, port, keepalive=30)
         self.client.subscribe(f"{prefix}/room/{room}/cmd/+")
         self.client.loop_start()
@@ -225,7 +229,8 @@ def build_transport(cfg: dict[str, Any], room: str, broker: Optional[str] = None
     logger.info("Intégrité des trames : %s", "signature HMAC-SHA256 active" if hmac_key else "aucune clé (EDGE_HMAC_KEY), trames non signées")
     if host:
         try:
-            t = MqttTransport(host, int(mq.get("port", 1883)), room, mq.get("prefix", "hackcure"), hmac_key=hmac_key)
+            tls = bool(mq.get("tls")) or os.getenv("MQTT_TLS", "").strip().lower() in ("1", "true", "yes", "on")
+            t = MqttTransport(host, int(mq.get("port", 8883 if tls else 1883)), room, mq.get("prefix", "hackcure"), hmac_key=hmac_key, tls=tls, ca_file=mq.get("ca_file") or os.getenv("MQTT_CA_FILE") or None)
             return t, "mqtt"
         except Exception as exc:
             logger.warning("Broker MQTT %s injoignable (%s) → repli HTTP", host, exc.__class__.__name__)

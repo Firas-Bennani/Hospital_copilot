@@ -47,6 +47,16 @@ async def start() -> list[asyncio.Task]:
     return [_task]
 
 
+def _tls_kwargs(aiomqtt: Any) -> dict[str, Any]:
+    """V3 : MQTT sur TLS (port 8883) si MQTT_TLS=1 ; MQTT_CA_FILE = autorité du broker (certificats système sinon)."""
+    import os
+    import ssl
+
+    if os.getenv("MQTT_TLS", "").strip().lower() not in ("1", "true", "yes", "on"):
+        return {}
+    return {"tls_params": aiomqtt.TLSParameters(ca_certs=os.getenv("MQTT_CA_FILE") or None, tls_version=ssl.PROTOCOL_TLS_CLIENT)}
+
+
 async def _run() -> None:
     global _client, _status
     import aiomqtt
@@ -54,7 +64,7 @@ async def _run() -> None:
     backoff = 5.0
     while True:
         try:
-            async with aiomqtt.Client(settings.mqtt_host, settings.mqtt_port, timeout=5) as client:
+            async with aiomqtt.Client(settings.mqtt_host, settings.mqtt_port, timeout=5, **_tls_kwargs(aiomqtt)) as client:
                 _client = client
                 _status = "connected"
                 backoff = 5.0

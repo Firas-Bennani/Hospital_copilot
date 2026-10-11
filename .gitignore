@@ -27,3 +27,8 @@ logs/
 !computer_vision/src/datasets/
 *.db-shm
 *.db-wal
+
+# V3 : certificats et clés privées (générés par scripts/make-cert)
+dashboard/certs/
+*.key
+*.pem

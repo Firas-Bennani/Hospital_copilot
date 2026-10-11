@@ -32,6 +32,9 @@ def init_db() -> None:
 
     SQLModel.metadata.create_all(engine)
     _migrate_columns()
+    from . import crypto
+
+    crypto.migrate(engine)  # V3 : chiffre les champs sensibles encore en clair quand une clé vient d'être configurée
     logger.info("Base initialisée (%s)", "sqlite" if settings.is_sqlite else "sql server")
 
 
@@ -42,7 +45,8 @@ def _migrate_columns() -> None:
     from sqlalchemy import inspect, text
 
     insp = inspect(engine)
-    wanted = {"risk": [("handled_by", "VARCHAR DEFAULT 'local' NOT NULL"), ("n8n_resume_url", "VARCHAR")], "ambulancemission": [("time_scale", "FLOAT DEFAULT 0 NOT NULL")]}
+    wanted = {"risk": [("handled_by", "VARCHAR DEFAULT 'local' NOT NULL"), ("n8n_resume_url", "VARCHAR")], "ambulancemission": [("time_scale", "FLOAT DEFAULT 0 NOT NULL")],
+              "auditlog": [("ip", "VARCHAR DEFAULT '' NOT NULL")]}
     with engine.begin() as conn:
         for table, cols in wanted.items():
             if table not in insp.get_table_names():

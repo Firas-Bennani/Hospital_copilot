@@ -7,6 +7,8 @@ Point d'entrée conservé : `cd dashboard && uvicorn server:app --reload --host 
 
 from __future__ import annotations
 
+from typing import Any
+
 import asyncio
 import json
 import logging
@@ -64,6 +66,8 @@ async def lifespan(app: FastAPI):
     if privacy is not None:  # V3 : journaux sans nom de patient ; registre des pseudonymes tenu à jour
         privacy.install()
         logger.info("Pseudonymisation des sorties (LLM, n8n, Telegram, journaux) : %s", "active" if privacy.enabled() else "DÉSACTIVÉE (PSEUDONYMIZE_OUTBOUND=0)")
+    for w in security_status()["warnings"]:  # avertissements visibles : la plateforme démarre quand même (mode démo)
+        logger.warning("SÉCURITÉ — %s", w)
 
     for mod_name, starter in (
         (".ingest.mqtt", "start"),
@@ -101,6 +105,34 @@ async def lifespan(app: FastAPI):
         _background_tasks.clear()
 
 
+def security_status() -> dict[str, Any]:
+    """État des mécanismes de conformité V3 (chacun a son interrupteur dans .env ; la plateforme démarre toujours)."""
+    import os
+
+    from . import crypto
+
+    privacy = _import_optional(".privacy")
+    integrity = _import_optional(".ingest.integrity")
+    https = os.getenv("HTTPS", "").strip().lower() in ("1", "true", "yes", "on") and os.getenv("HACKCURE_TLS_ACTIVE") == "1"
+    hmac_on = bool(os.getenv("EDGE_HMAC_KEY", "").strip()) and integrity is not None
+    out = {
+        "https": https, "tls_min_version": "TLSv1.3" if https else None,
+        "encryption_at_rest": crypto.enabled(), "encryption_algorithm": "AES-256-GCM",
+        "pseudonymisation": bool(privacy and privacy.enabled()),
+        "frame_integrity": "hmac-sha256" if hmac_on else "demo",
+        "warnings": [],
+    }
+    if not https:
+        out["warnings"].append("HTTP en clair : activer HTTPS=true (scripts/make-cert) ou passer par le tunnel")
+    if not out["encryption_at_rest"]:
+        out["warnings"].append("Chiffrement au repos inactif : définir DATA_ENCRYPTION_KEY (scripts/make-key)")
+    if not hmac_on:
+        out["warnings"].append("Trames IoT non vérifiées : définir EDGE_HMAC_KEY (scripts/make-key)")
+    if not out["pseudonymisation"]:
+        out["warnings"].append("Pseudonymisation des sorties désactivée (PSEUDONYMIZE_OUTBOUND=0)")
+    return out
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="HackCure Patient Monitoring",
@@ -115,6 +147,9 @@ def create_app() -> FastAPI:
     privacy = _import_optional(".privacy")
     if privacy is not None:
         app.add_middleware(privacy.IdentityGuard)
+    from .audit import ClientIpMiddleware
+
+    app.add_middleware(ClientIpMiddleware)  # V3 : IP du poste dans le journal d'audit
 
     # Routeurs des phases suivantes (inclus s'ils existent)
     for name in (
@@ -206,6 +241,7 @@ def create_app() -> FastAPI:
                 "mqtt": getattr(_import_optional(".ingest.mqtt"), "status", lambda: "disabled")(),
                 "n8n": getattr(_import_optional(".n8n"), "status", lambda: "disabled")(),
                 "telegram": settings.telegram_enabled,
+                "security": security_status(),
             }
         )
 

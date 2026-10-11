@@ -9,6 +9,9 @@ from datetime import date, datetime, timezone
 from typing import Optional
 
 from sqlmodel import Field, SQLModel
+from sqlalchemy import Column
+
+from .crypto import EncryptedStr
 
 
 def utcnow() -> datetime:
@@ -50,8 +53,8 @@ class Patient(SQLModel, table=True):
     patient_id: str = Field(index=True, unique=True)  # "patient_01" (identifiant 3D existant)
     code: str = Field(index=True, unique=True)  # "PAT-0001"
     display_name: str  # "Patient A" (étiquette 3D existante)
-    first_name: str
-    last_name: str
+    first_name: str = Field(sa_column=Column(EncryptedStr, nullable=False))  # V3 : chiffré au repos (AES-256-GCM) si DATA_ENCRYPTION_KEY
+    last_name: str = Field(sa_column=Column(EncryptedStr, nullable=False))
     birth_date: date
     sex: str = "M"  # M | F
     allergies: str = ""  # séparées par des virgules
@@ -322,6 +325,7 @@ class AuditLog(SQLModel, table=True):
     entity_id: Optional[str] = None
     details: str = ""
     ts: datetime = Field(default_factory=utcnow, index=True)
+    ip: str = ""  # V3 (non-répudiation) : adresse du poste d'où vient l'action
 
 
 # ─── V2 : dossier médical, biologie, parcours fièvre ─────────────────────────
@@ -338,7 +342,7 @@ class MedicalRecordEntry(SQLModel, table=True):
     service: str = ""
     facility: str = ""
     summary: str = ""
-    content: str = ""
+    content: str = Field(default="", sa_column=Column(EncryptedStr, nullable=False, default=""))  # V3 : chiffré au repos
     data_json: str = "{}"  # contenu structuré
     attachments_json: str = "[]"
     source: str = "historique"  # historique (généré) | plateforme (créé pendant le séjour)
@@ -493,7 +497,7 @@ class PsychQuestionnaire(SQLModel, table=True):
     room_code: str = ""
     token: str = Field(index=True, unique=True)  # lien de la page tablette
     status: str = "pending"  # pending | completed
-    answers_json: str = "{}"
+    answers_json: str = Field(default="{}", sa_column=Column(EncryptedStr, nullable=False, default="{}"))  # V3 : chiffré au repos
     scores_json: str = "{}"
     q9_positive: bool = False
     created_at: datetime = Field(default_factory=utcnow)

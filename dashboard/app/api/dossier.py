@@ -147,7 +147,14 @@ def entries(patient_id: str, type: Optional[str] = None, service: Optional[str] 
         query = query.where(MedicalRecordEntry.service == service)
     if q and scope != "identity":
         like = f"%{q.strip()}%"
-        query = query.where(or_(MedicalRecordEntry.title.ilike(like), MedicalRecordEntry.summary.ilike(like), MedicalRecordEntry.content.ilike(like), MedicalRecordEntry.author.ilike(like)))
+        from .. import crypto
+
+        if crypto.enabled():  # contenu chiffré au repos : recherche dans le texte déchiffré en mémoire (≈ 100 documents par patient)
+            needle = q.strip().lower()
+            ids = [e.id for e in session.exec(base).all() if needle in (e.content or "").lower()]
+            query = query.where(or_(MedicalRecordEntry.title.ilike(like), MedicalRecordEntry.summary.ilike(like), MedicalRecordEntry.author.ilike(like), MedicalRecordEntry.id.in_(ids)))
+        else:
+            query = query.where(or_(MedicalRecordEntry.title.ilike(like), MedicalRecordEntry.summary.ilike(like), MedicalRecordEntry.content.ilike(like), MedicalRecordEntry.author.ilike(like)))
     try:
         if date_from:
             query = query.where(MedicalRecordEntry.date >= datetime.fromisoformat(date_from[:10]).replace(tzinfo=timezone.utc))
