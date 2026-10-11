@@ -35,8 +35,9 @@ const SADM = (() => {
     async function explain(query) {
         const key = qs(query);
         const hit = cache[key];
-        if (hit && Date.now() - hit.at < TTL) return hit;
-        const entry = cache[key] = { at: Date.now(), data: null, error: null, pending: null };
+        if (hit && (Date.now() - hit.at < TTL || hit.pending)) return hit;
+        // la dernière réponse connue reste affichée pendant le rafraîchissement : une vue qui se redessine retrouve sa bande aussitôt
+        const entry = cache[key] = { at: Date.now(), data: hit ? hit.data : null, error: null, pending: null };
         entry.pending = Api.get('/api/sadm/explain?' + key, { noRedirect: true }).then(d => { entry.data = d; }).catch(e => { entry.error = e.message || 'indisponible'; }).finally(() => { entry.pending = null; scanSoon(); });
         return entry;
     }
@@ -90,7 +91,8 @@ const SADM = (() => {
         // Centre de commande : risque sélectionné + plan d'action
         const plan = document.getElementById('cmd-plan');
         if (plan) {
-            const m = (plan.querySelector('h3') || {}).textContent ? plan.querySelector('h3').textContent.match(/#(\d+)/) : null;
+            // le premier titre peut être celui du profil clinique : on cherche le titre « #12 · … » du risque
+            const m = [...plan.querySelectorAll('h3')].map(h => h.textContent.match(/^\s*#(\d+)/)).find(Boolean);
             const hint = plan.querySelector('.ai-hint');
             if (m && hint) mount(hint, 'afterend', { kind: 'risk', ref: m[1] });
             const fever = plan.querySelector('.fever-panel');
@@ -118,7 +120,7 @@ const SADM = (() => {
         if (psy && psyScore) { const h = psyScore.closest('h3'); if (h) mount(h, 'afterend', { kind: 'psych', ref: psy.dataset.id }); }
         notifShortcuts();
     }
-    function scanSoon(ms) { if (scanTimer) return; scanTimer = setTimeout(() => { scanTimer = null; try { scan(); } catch (e) { console.error('[SADM]', e); } }, ms == null ? 250 : ms); }
+    function scanSoon(ms) { if (scanTimer) return; scanTimer = setTimeout(() => { scanTimer = null; try { scan(); } catch (e) { console.error('[SADM]', e); } }, ms == null ? 80 : ms); }
 
     // ── 3. parcours en 3 actions maximum depuis la cloche ───────────────────
     let toSign = { at: 0, rows: [] };
@@ -176,7 +178,7 @@ const SADM = (() => {
     document.addEventListener('DOMContentLoaded', () => { if (window.Auth && Auth.onReady) Auth.onReady(init); else init(); });
     if (document.readyState !== 'loading') { if (window.Auth && Auth.onReady) Auth.onReady(init); else init(); }
 
-    return { scan: () => scanSoon(0), state: () => ({ ready, strips: document.querySelectorAll('.sadm-strip').length, banner: !!document.getElementById('sadm-banner'), canDecide: cfg.can_decide }), BANNER };
+    return { scan: () => scanSoon(0), debug: () => Object.entries(cache).map(([k, v]) => `${k} → ${v.data ? 'ok' : (v.error || 'en cours')}`), state: () => ({ ready, strips: document.querySelectorAll('.sadm-strip').length, banner: !!document.getElementById('sadm-banner'), canDecide: cfg.can_decide }), BANNER };
 })();
 
 window.SADM = SADM;
