@@ -27,6 +27,24 @@ Ouvrir <http://localhost:8000> → page de connexion. Comptes de démo (mot de p
 Le simulateur embarqué alimente les appareils des 4 chambres et les chambres virtuelles 102–104 ; le bouton
 **« Lancer la démo »** joue les scénarios (`fall_demo`, `nurse_resolves`, `fever_101`, …).
 
+## Lancer avec Docker (environnement conteneurisé autonome)
+```powershell
+.\scripts\run-docker.ps1            # plateforme + broker MQTT  → http://localhost:8000
+.\scripts\run-docker.ps1 -N8n       # + n8n                    → http://localhost:5678
+.\scripts\run-docker.ps1 -Down      # arrêt (base et données n8n conservées) ; -Reset supprime la base
+```
+```bash
+./scripts/run-docker.sh [--n8n | --down | --reset]      # ou : docker compose up -d --build
+```
+- `Dockerfile` : Python 3.11 slim, dépendances de `requirements.txt`, **utilisateur non-root** (`hackcure`), `HEALTHCHECK` sur `/health`.
+- `docker-compose.yml` : services `platform`, `mosquitto`, `n8n` (profil `n8n`), `sqlserver` (profil `mssql`) ; volumes `hackcure-data`
+  (base SQLite, certificats) et `n8n-data` ; le `.env` de l'hôte est lu s'il existe (rien n'est copié dans l'image) ; `restart: unless-stopped`.
+- Dans le réseau Docker, la plateforme joint le broker par `mosquitto:1883` et n8n par `http://n8n:5678` (réglé par le compose).
+- Port différent : `PLATFORM_PORT=8010 docker compose up -d`. Journal : `docker compose logs -f platform`.
+- **État de la vérification** : sur la machine de développement le démon Docker ne répondait pas ; le fichier compose est validé par
+  `docker compose config`, l'image n'a pas été construite. Test à faire sur une machine avec Docker : `run-docker`, attendre « healthy »,
+  ouvrir http://localhost:8000, lancer `full_demo_v2`.
+
 ## Options
 | Besoin | Commande |
 |---|---|

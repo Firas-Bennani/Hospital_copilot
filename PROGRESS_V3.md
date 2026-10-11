@@ -16,3 +16,4 @@ Organisation (demande de 02h05) : étapes 4, 5 et 7 confiées à des sous-agents
 étapes 1, 2, 6 puis 3 par l'agent principal.
 
 ## Journal
+- 2026-10-11 02:40 — Étape 1 : `Dockerfile` (Python 3.11 slim, utilisateur non-root, HEALTHCHECK `/health` par `dashboard/healthcheck.py`), `docker-compose.yml` (plateforme, Mosquitto, profils `n8n` et `mssql`, volumes, `.env` de l'hôte, redémarrage automatique), `scripts/run-docker.ps1` / `.sh`, section README. **Non exécuté** : le démon Docker de cette machine ne répond pas (erreur 500 du moteur) ; validé par `docker compose config` et par des tests de structure. Voir `BLOCKERS.md`.
