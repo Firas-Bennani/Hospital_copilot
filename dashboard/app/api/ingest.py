@@ -1,4 +1,7 @@
-"""Repli HTTP du broker MQTT : `POST /api/ingest` (un message ou un lot)."""
+"""Repli HTTP du broker MQTT : `POST /api/ingest` (un message ou un lot).
+
+Intégrité des trames (V3) : une trame refusée par `ingest/integrity.py` apparaît dans `rejected` avec sa raison
+(`reason`). Si AUCUN message du lot n'est accepté et qu'au moins un l'a été pour cette raison : `401`."""
 
 from __future__ import annotations
 
@@ -9,7 +12,7 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 from .. import contracts
-from ..ingest import handler
+from ..ingest import handler, integrity
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 
@@ -39,12 +42,17 @@ async def ingest(body: IngestBatch, x_api_key: Optional[str] = Header(default=No
         msgs = [IngestMessage(topic=body.topic, payload=body.payload)] + msgs
     if not msgs:
         raise HTTPException(422, "Aucun message (attendu {topic, payload} ou {messages:[...]})")
-    results, errors = [], []
+    results, errors, unauthentic = [], [], 0
     for m in msgs:
         try:
             results.append(await handler.handle(m.topic, m.payload, via="http"))
         except contracts.ContractError as exc:
             errors.append({"topic": m.topic, "error": str(exc)})
+        except integrity.FrameRejected as exc:
+            unauthentic += 1
+            errors.append({"topic": m.topic, "error": str(exc), "reason": exc.reason})
+    if unauthentic and not results:
+        raise HTTPException(401, detail=errors)
     if errors and not results:
         raise HTTPException(422, detail=errors)
     return {"status": "accepted", "accepted": len(results), "rejected": errors}

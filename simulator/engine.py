@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import math
 import random
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -25,6 +26,15 @@ from typing import Any, Callable, Optional
 import yaml
 
 logger = logging.getLogger("hackcure.sim")
+
+# Intégrité des trames (V3) : primitives partagées `contracts/integrity.py` (bibliothèque standard uniquement).
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+try:
+    from contracts.integrity import Signer  # noqa: E402
+except Exception:  # dossier `contracts/` absent : pas de signature
+    Signer = None  # type: ignore
 
 SCENARIOS_DIR = Path(__file__).resolve().parent / "scenarios"
 DEVICE_TYPES = ["iv_pump", "nutrition_pump", "transfusion", "bp", "ecg", "oxygen", "spo2", "thermometer", "glucometer"]
@@ -390,8 +400,10 @@ class Scenario:
 class SimEngine:
     """Fait avancer toutes les chambres et publie les messages via `publish(topic, payload)`."""
 
-    def __init__(self, publish: Publish, rooms: list[str] | None = None, speed: float = 1.0, source: str = "sim", profiles: dict[str, Profile] | None = None):
+    def __init__(self, publish: Publish, rooms: list[str] | None = None, speed: float = 1.0, source: str = "sim", profiles: dict[str, Profile] | None = None, hmac_key: Optional[str] = None):
         self.publish = publish
+        # intégrité des trames : `seq` + `sig` ajoutés à chaque message si une clé est fournie (`hmac_key`, sinon EDGE_HMAC_KEY) ; rien sinon
+        self.signer = Signer(hmac_key) if Signer is not None else None
         self.speed = max(0.1, speed)
         self.source = source
         profiles = profiles or DEFAULT_PROFILES
@@ -407,6 +419,12 @@ class SimEngine:
         # résolutions (interventions d'un soignant) : jouées en surcouche du scénario principal, une par chambre à la fois
         self.resolutions: dict[str, dict[str, Any]] = {}
         self._resolution_queue: dict[str, list[tuple[str, Optional[str]]]] = {}
+
+    def _send(self, topic: str, payload: dict[str, Any]) -> Any:
+        """Point de sortie unique des messages : signature (si une clé est configurée) puis `publish`."""
+        if self.signer is not None:
+            payload = self.signer.sign(topic, payload)
+        return self.publish(topic, payload)
 
     # ── temps ───────────────────────────────────────────────────────────────
     @property
@@ -433,7 +451,7 @@ class SimEngine:
                 continue
             room.step(dt, self.sim_time, self.is_night)
             for topic, payload in room.messages(self.sim_time, self.source):
-                self.publish(topic, payload)
+                self._send(topic, payload)
                 n += 1
         return n
 
@@ -532,10 +550,10 @@ class SimEngine:
             r.recover()
         elif action == "staff_enter":
             r.staff_enter(int(params.get("persons", 2)), params.get("role"))
-            self.publish(f"hackcure/room/{r.room}/vision/staff", {"ts": iso_now(), "source": self.source, "event": "staff_enter", "persons": r.persons, "role": r.staff_role})
+            self._send(f"hackcure/room/{r.room}/vision/staff", {"ts": iso_now(), "source": self.source, "event": "staff_enter", "persons": r.persons, "role": r.staff_role})
         elif action == "staff_leave":
             dur = r.staff_leave()
-            self.publish(f"hackcure/room/{r.room}/vision/staff", {"ts": iso_now(), "source": self.source, "event": "staff_leave", "persons": r.persons, "durationSec": round(dur, 1)})
+            self._send(f"hackcure/room/{r.room}/vision/staff", {"ts": iso_now(), "source": self.source, "event": "staff_leave", "persons": r.persons, "durationSec": round(dur, 1)})
         elif action == "expression":
             r.expression, r.expression_conf = params["expression"], float(params.get("confidence", 0.7))
         elif action == "trend":
@@ -552,7 +570,7 @@ class SimEngine:
         elif action == "call":
             r.call_pressed = bool(params.get("pressed", True))
             if r.call_pressed:
-                self.publish(f"hackcure/room/{r.room}/call", {"ts": iso_now(), "source": self.source, "pressed": True})
+                self._send(f"hackcure/room/{r.room}/call", {"ts": iso_now(), "source": self.source, "pressed": True})
         elif action == "env":
             if "tempC" in params:  # source de chaleur : la chambre tend vers cette température (les équipements gardent leur effet)
                 r.env_offset = float(params["tempC"]) - 22.5
@@ -611,7 +629,7 @@ class SimEngine:
         if not r:
             return
         ok, state = r.apply_command(equipment, action, value)
-        self.publish(f"hackcure/room/{r.room}/cmd/ack", {"ts": iso_now(), "source": self.source, "equipment": equipment, "action": action, "ok": ok, "state": state, "commandId": command_id})
+        self._send(f"hackcure/room/{r.room}/cmd/ack", {"ts": iso_now(), "source": self.source, "equipment": equipment, "action": action, "ok": ok, "state": state, "commandId": command_id})
 
     def snapshot(self) -> dict[str, Any]:
         return {

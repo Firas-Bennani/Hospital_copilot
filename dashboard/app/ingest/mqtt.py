@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 from .. import contracts
 from ..config import settings
-from . import handler
+from . import handler, integrity
 
 logger = logging.getLogger("hackcure.mqtt")
 
@@ -73,6 +73,8 @@ async def _run() -> None:
                         await handler.handle(topic, payload, via="mqtt")
                     except contracts.ContractError as exc:
                         logger.warning("MQTT message invalide %s: %s", topic, exc)
+                    except integrity.FrameRejected as exc:  # trame non signée, falsifiée, rejouée ou trop ancienne : ignorée
+                        logger.debug("MQTT %s : %s", topic, exc)
                     except Exception:
                         logger.exception("MQTT handler")
         except asyncio.CancelledError:

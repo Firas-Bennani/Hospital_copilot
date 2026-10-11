@@ -137,6 +137,19 @@ def contract_messages(event_data: dict, room: str, emotion: str = "unknown") -> 
     return msgs
 
 
+def _sign_messages(msgs: list) -> list:
+    """Intégrité des trames : ajoute `seq` + `sig` (HMAC-SHA256) si EDGE_HMAC_KEY est défini ; sinon ne change rien."""
+    try:
+        if "signer" not in _last_contract:
+            from contracts.integrity import Signer
+
+            _last_contract["signer"] = Signer()
+        signer = _last_contract["signer"]
+        return [{"topic": m["topic"], "payload": signer.sign(m["topic"], m["payload"])} for m in msgs]
+    except Exception:
+        return msgs
+
+
 def send_contract(event_data: dict, room: str, emotion: str = "unknown") -> None:
     """Publie au format des contrats (POST /api/ingest), 2 Hz max."""
     now = time.time()
@@ -144,7 +157,7 @@ def send_contract(event_data: dict, room: str, emotion: str = "unknown") -> None
         return
     _last_contract["t"] = now
     try:
-        requests.post(f"{SERVER_URL}/api/ingest", json={"messages": contract_messages(event_data, room, emotion)}, timeout=2)
+        requests.post(f"{SERVER_URL}/api/ingest", json={"messages": _sign_messages(contract_messages(event_data, room, emotion))}, timeout=2)
     except Exception:
         pass
 

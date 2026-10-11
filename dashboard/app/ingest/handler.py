@@ -26,6 +26,7 @@ from ..bus import bus
 from ..db import session_scope
 from ..models import EnvironmentReading, MedicalDevice, PatientStateSnapshot, RoomEquipment, VitalReading
 from ..ws import manager
+from . import integrity  # V3 : intégrité des trames IoT
 
 logger = logging.getLogger("hackcure.ingest")
 
@@ -112,12 +113,18 @@ def edge_alive(room: str, within_s: float = 15.0) -> bool:
 
 # ── point d'entrée ────────────────────────────────────────────────────────────
 async def handle(topic: str, payload: dict[str, Any], via: str = "http") -> dict[str, Any]:
-    """Traite un message. Lève `contracts.ContractError` si invalide."""
+    """Traite un message. Lève `contracts.ContractError` si invalide, `integrity.FrameRejected` si la trame échoue au contrôle d'intégrité."""
     try:
         kind, groups = contracts.validate(topic, payload)
     except contracts.ContractError:
         stats["rejected"] += 1
         raise
+    # ── V3, étape 5 : intégrité des trames (séquence, horodatage, HMAC-SHA256) — voir ingest/integrity.py ──
+    verdict = integrity.check(topic, payload, via)
+    if not verdict.ok:
+        stats["rejected"] += 1
+        raise integrity.FrameRejected(verdict, topic)
+    # ── fin V3, étape 5 ──
     stats["accepted"] += 1
     stats["by_via"][via] += 1
     room = groups.get("room", "")
@@ -179,6 +186,8 @@ def handle_nowait(topic: str, payload: dict[str, Any], via: str = "embedded") ->
             await handle(topic, payload, via)
         except contracts.ContractError as exc:
             logger.warning("Message simulateur invalide %s: %s", topic, exc)
+        except integrity.FrameRejected:
+            pass  # déjà compté et journalisé par ingest/integrity.py
         except Exception:
             logger.exception("Ingestion %s", topic)
 

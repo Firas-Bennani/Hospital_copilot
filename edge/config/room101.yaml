@@ -86,3 +86,11 @@ behavior:
   enabled: true
   transformer: true
   window: 30
+
+# Intégrité des trames (V3) : chaque message porte `seq` + `sig` (HMAC-SHA256) quand une clé est définie.
+# La clé est la même que EDGE_HMAC_KEY dans le .env du serveur. La variable d'environnement EDGE_HMAC_KEY du Pi
+# est prioritaire sur ce fichier (recommandé : ne pas versionner la clé). Sans clé : trames non signées (mode démo).
+# L'horloge du Pi doit être synchronisée (NTP) : le serveur rejette les trames de plus de 30 s. Voir docs/integrite-trames.md.
+# Générer une clé : python -c "import secrets; print(secrets.token_hex(32))"
+# security:
+#   hmac_key: "coller-ici-la-cle-hexadecimale"

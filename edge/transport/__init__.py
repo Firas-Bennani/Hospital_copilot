@@ -2,18 +2,43 @@
 Transport edge → serveur : MQTT (paho) si le broker répond, sinon repli HTTP `POST /api/ingest` (lots),
 avec **file locale hors ligne** (jsonl) renvoyée à la reconnexion. Réception des commandes :
 abonnement MQTT `hackcure/room/{room}/cmd/+`, ou long-poll HTTP `GET /api/edge/commands`.
+
+Intégrité des trames (V3) : si une clé est configurée (`EDGE_HMAC_KEY` dans l'environnement, sinon `security.hmac_key`
+du YAML), chaque payload est signé AU MOMENT OÙ IL PART (`seq` croissant + `sig` HMAC-SHA256, voir `contracts/integrity.py`
+et `docs/integrite-trames.md`). Sans clé, rien n'est ajouté. Les messages de la file hors ligne sont ré-horodatés à
+l'envoi (`ts` = heure d'envoi, heure de mesure conservée dans `measuredAt`, séquence fraîche) : sinon le serveur les
+rejetterait comme trop anciens (> 30 s).
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
+import sys
 import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger("edge.transport")
+
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+try:
+    from contracts.integrity import Signer  # noqa: E402  (bibliothèque standard uniquement)
+except Exception:  # dossier `contracts/` non déployé sur le Pi : pas de signature
+    Signer = None  # type: ignore
+
+
+def build_signer(hmac_key: Optional[str] = None):
+    """Signataire des trames sortantes. `hmac_key=None` : clé lue dans EDGE_HMAC_KEY ; sans clé, les payloads partent inchangés."""
+    if Signer is None:
+        if hmac_key or os.getenv("EDGE_HMAC_KEY"):
+            logger.warning("Clé HMAC configurée mais `contracts/integrity.py` introuvable : trames NON signées")
+        return None
+    return Signer(hmac_key or None)
 CommandHandler = Callable[[str, str, Any, str, Optional[str]], tuple[bool, str, Optional[str]]]
 
 
@@ -53,8 +78,11 @@ class OfflineQueue:
 
 
 class HttpTransport:
-    def __init__(self, server_url: str, room: str, api_key: str = "", queue_file: Optional[str] = None, flush_every_s: float = 1.0):
+    def __init__(self, server_url: str, room: str, api_key: str = "", queue_file: Optional[str] = None, flush_every_s: float = 1.0, hmac_key: Optional[str] = None):
         import requests
+
+        self.signer = build_signer(hmac_key)
+        self._send_lock = threading.RLock()  # un seul envoi à la fois : les séquences arrivent dans l'ordre
 
         self.requests = requests
         self.base = server_url.rstrip("/")
@@ -75,17 +103,30 @@ class HttpTransport:
         if critical:
             self.flush(force=True)
 
+    def _signed(self, messages: list[dict[str, Any]], restamp: bool = False) -> list[dict[str, Any]]:
+        """Copie signée des messages, juste avant l'envoi (les originaux, non signés, restent ceux mis en file)."""
+        if self.signer is None or not self.signer.enabled:
+            return messages
+        return [{"topic": m["topic"], "payload": self.signer.sign(m["topic"], m["payload"], restamp=restamp)} for m in messages]
+
     def flush(self, force: bool = False) -> bool:
+        with self._send_lock:
+            return self._flush(force)
+
+    def _flush(self, force: bool = False) -> bool:
         now = time.time()
         if not force and now - self.last_flush < self.flush_every:
             return self.online
         self.last_flush = now
-        batch = self.queue.drain() + self.buffer if self.online or not self.queue.items else self.buffer
+        queued = self.queue.drain() if self.online or not self.queue.items else []
+        batch = queued + self.buffer
         if not batch and not self.queue.items:
             return self.online
         self.buffer = []
         try:
-            r = self.requests.post(f"{self.base}/api/ingest", json={"messages": batch}, headers=self.headers, timeout=3)
+            # file hors ligne d'abord (ré-horodatée), puis les messages courants : séquences croissantes dans le lot
+            wire = self._signed(queued, restamp=True) + self._signed(batch[len(queued):])
+            r = self.requests.post(f"{self.base}/api/ingest", json={"messages": wire}, headers=self.headers, timeout=3)
             if r.status_code >= 500:
                 raise RuntimeError(f"HTTP {r.status_code}")
             if not self.online:
@@ -95,7 +136,7 @@ class HttpTransport:
             if self.queue.items:  # ce qui restait en file
                 rest = self.queue.drain()
                 if rest:
-                    self.requests.post(f"{self.base}/api/ingest", json={"messages": rest}, headers=self.headers, timeout=3)
+                    self.requests.post(f"{self.base}/api/ingest", json={"messages": self._signed(rest, restamp=True)}, headers=self.headers, timeout=3)
             return True
         except Exception as exc:
             self.errors += 1
@@ -131,9 +172,10 @@ class HttpTransport:
 
 
 class MqttTransport:
-    def __init__(self, host: str, port: int, room: str, prefix: str = "hackcure"):
+    def __init__(self, host: str, port: int, room: str, prefix: str = "hackcure", hmac_key: Optional[str] = None):
         import paho.mqtt.client as mqtt
 
+        self.signer = build_signer(hmac_key)
         self.room, self.prefix = room, prefix
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2) if hasattr(mqtt, "CallbackAPIVersion") else mqtt.Client()
         self.client.on_message = self._on_message
@@ -158,6 +200,10 @@ class MqttTransport:
             self.ack_publish(equipment, data.get("action", ""), ok, state, data.get("commandId"), err)
 
     def publish(self, topic: str, payload: dict[str, Any], critical: bool = False) -> None:
+        if self.signer is not None and self.signer.enabled:
+            with self.signer.lock:  # signature et remise au client MQTT dans le même verrou : ordre des séquences garanti
+                self.client.publish(topic, json.dumps(self.signer.sign(topic, payload), default=str), qos=1 if critical else 0)
+            return
         self.client.publish(topic, json.dumps(payload, default=str), qos=1 if critical else 0)
 
     def flush(self, force: bool = False) -> bool:
@@ -174,12 +220,15 @@ def build_transport(cfg: dict[str, Any], room: str, broker: Optional[str] = None
     """MQTT si un hôte est configuré et répond, sinon HTTP (repli)."""
     mq = cfg.get("mqtt", {}) or {}
     host = broker or mq.get("host")
+    # clé de signature des trames : variable d'environnement EDGE_HMAC_KEY en priorité, sinon `security.hmac_key` du YAML
+    hmac_key = (os.getenv("EDGE_HMAC_KEY") or str((cfg.get("security", {}) or {}).get("hmac_key") or "")).strip()
+    logger.info("Intégrité des trames : %s", "signature HMAC-SHA256 active" if hmac_key else "aucune clé (EDGE_HMAC_KEY), trames non signées")
     if host:
         try:
-            t = MqttTransport(host, int(mq.get("port", 1883)), room, mq.get("prefix", "hackcure"))
+            t = MqttTransport(host, int(mq.get("port", 1883)), room, mq.get("prefix", "hackcure"), hmac_key=hmac_key)
             return t, "mqtt"
         except Exception as exc:
             logger.warning("Broker MQTT %s injoignable (%s) → repli HTTP", host, exc.__class__.__name__)
     srv = cfg.get("server", {}) or {}
     url = server or srv.get("url", "http://localhost:8000")
-    return HttpTransport(url, room, srv.get("api_key", ""), cfg.get("rules", {}).get("offline_queue_file")), "http"
+    return HttpTransport(url, room, srv.get("api_key", ""), cfg.get("rules", {}).get("offline_queue_file"), hmac_key=hmac_key), "http"

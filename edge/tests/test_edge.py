@@ -214,3 +214,78 @@ def test_behavior_publisher_is_optional_and_follows_the_contract():
     assert pub.step(frame, (100, 100, 200, 300), "patient_lying", 0.9, False, True, 11.0) is None      # pas de changement
     schema = json.loads((ROOT / "contracts" / "schemas" / "vision_behavior.json").read_text(encoding="utf-8"))
     assert set(schema["required"]) - {"ts", "source"} <= set(first)
+
+
+# ─── intégrité des trames : signature au moment de l'envoi (V3) ──────────────
+class _FakeRequests:
+    """Remplace `requests` : enregistre les lots envoyés, ou simule une coupure."""
+
+    def __init__(self):
+        self.sent, self.down = [], False
+
+    def post(self, url, json=None, headers=None, timeout=None):
+        if self.down:
+            raise ConnectionError("coupure simulée")
+        self.sent.append(json["messages"])
+        return type("R", (), {"status_code": 202})()
+
+
+def test_http_transport_signs_at_send_time(tmp_path, monkeypatch):
+    from contracts import integrity as prim
+
+    monkeypatch.delenv("EDGE_HMAC_KEY", raising=False)
+    key, topic = "cle-edge-test", "hackcure/room/101/vision/state"
+    t = HttpTransport("http://127.0.0.1:1", "101", queue_file=str(tmp_path / "q.jsonl"), hmac_key=key)
+    t.requests = fake = _FakeRequests()
+    p1, p2 = {"ts": prim.now_iso(), "source": "edge-fake", "posture": "lying_bed"}, {"ts": prim.now_iso(), "source": "edge-fake", "posture": "standing"}
+    t.publish(topic, p1)
+    t.publish(topic, p2)
+    assert t.flush(force=True) is True
+    a, b = (m["payload"] for m in fake.sent[0])
+    assert "sig" not in p1 and "seq" not in p1  # le payload d'origine n'est pas modifié
+    assert prim.verify(topic, a, key) and prim.verify(topic, b, key) and b["seq"] > a["seq"] and a["ts"] == p1["ts"] and "measuredAt" not in a
+    # sans clé : rien n'est ajouté (mode démo du serveur)
+    plain = HttpTransport("http://127.0.0.1:1", "101")
+    plain.requests = fake2 = _FakeRequests()
+    plain.publish(topic, p1)
+    plain.flush(force=True)
+    assert fake2.sent[0][0]["payload"] == p1 and fake2.sent[0][0]["payload"] is p1
+
+
+def test_offline_queue_is_restamped_and_resigned(tmp_path, monkeypatch):
+    from contracts import integrity as prim
+
+    monkeypatch.delenv("EDGE_HMAC_KEY", raising=False)
+    key, q = "cle-edge-test", tmp_path / "q.jsonl"
+    t = HttpTransport("http://127.0.0.1:1", "101", queue_file=str(q), hmac_key=key)
+    t.requests = fake = _FakeRequests()
+    fake.down = True
+    old_ts = "2026-10-10T22:00:00+00:00"  # mesure faite pendant la coupure, bien plus de 30 s avant le renvoi
+    alarm_topic = "hackcure/room/101/safety/alarm"
+    t.publish(alarm_topic, {"ts": old_ts, "source": "edge-fake", "reason": "fall", "localActionTaken": ["buzzer"]}, critical=True)
+    assert t.online is False and len(t.queue) == 1
+    stored = json.loads(q.read_text(encoding="utf-8").splitlines()[0])["payload"]
+    assert "sig" not in stored and "seq" not in stored and stored["ts"] == old_ts  # la file garde la mesure d'origine, non signée
+    fake.down = False
+    t.publish("hackcure/room/101/env", {"ts": prim.now_iso(), "source": "edge-fake", "tempC": 22.0})
+    assert t.flush(force=True) is True and len(t.queue) == 0
+    sent = [m for batch in fake.sent for m in batch]
+    alarm = next(m["payload"] for m in sent if m["topic"] == alarm_topic)
+    env = next(m["payload"] for m in sent if m["topic"].endswith("/env"))
+    assert alarm["measuredAt"] == old_ts and alarm["ts"] != old_ts and alarm["reason"] == "fall"  # ré-horodatée à l'envoi
+    assert abs(prim.parse_ts(alarm["ts"]) - prim.parse_ts(prim.now_iso())) < 5
+    assert prim.verify(alarm_topic, alarm, key) and prim.verify("hackcure/room/101/env", env, key) and "measuredAt" not in env
+    assert len({alarm["seq"], env["seq"]}) == 2
+
+
+def test_build_transport_reads_the_key_from_env_then_config(monkeypatch):
+    from edge.transport import build_transport
+
+    cfg = {"mqtt": {"host": ""}, "server": {"url": "http://127.0.0.1:1"}, "security": {"hmac_key": "cle-du-yaml"}}
+    monkeypatch.delenv("EDGE_HMAC_KEY", raising=False)
+    t, kind = build_transport(cfg, "101")
+    assert kind == "http" and t.signer.enabled and t.signer.key == "cle-du-yaml"
+    monkeypatch.setenv("EDGE_HMAC_KEY", "cle-de-l-environnement")  # prioritaire sur le fichier
+    assert build_transport(cfg, "101")[0].signer.key == "cle-de-l-environnement"
+    monkeypatch.delenv("EDGE_HMAC_KEY")
+    assert build_transport({"mqtt": {"host": ""}, "server": {"url": "http://127.0.0.1:1"}}, "101")[0].signer.enabled is False

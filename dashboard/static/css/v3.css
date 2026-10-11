@@ -5,3 +5,15 @@
 .fhir-export-btn:hover:not(:disabled) { background: rgba(56, 189, 248, .14); }
 .fhir-export-btn:disabled { opacity: .6; cursor: progress; }
 /* FHIR — fin */
+
+/* ── Intégrité des trames (début) — indicateur de la page Machines, js/v3/frame-integrity.js ── */
+.frame-integrity h3 .fi-sub { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 8px; }
+.frame-integrity .fi-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 6px; }
+.frame-integrity .fi-stat { font-size: 12px; color: var(--text-secondary); }
+.frame-integrity .fi-stat b { color: var(--text-primary, #e2e8f0); font-size: 14px; }
+.frame-integrity .fi-reasons { color: var(--text-muted); }
+.frame-integrity .fi-reason b { color: var(--text-secondary); }
+.frame-integrity .fi-reason.fi-hit, .frame-integrity .fi-reason.fi-hit b { color: #fca5a5; }
+.frame-integrity .fi-last { margin-top: 2px; color: var(--text-secondary); }
+.frame-integrity .fi-topic { font-family: ui-monospace, Consolas, monospace; word-break: break-all; }
+/* ── Intégrité des trames (fin) ── */

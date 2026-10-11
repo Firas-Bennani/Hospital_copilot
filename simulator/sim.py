@@ -6,6 +6,9 @@ Simulateur autonome (processus séparé du serveur).
 
 Transport : MQTT (paho) si `--broker` et joignable, sinon HTTP `POST /api/ingest` (lots d'1 s).
 Écoute `hackcure/sim/scenario` (MQTT) pour lancer des scénarios à distance.
+
+Intégrité des trames : si `EDGE_HMAC_KEY` est défini dans l'environnement (ou `--hmac-key`), chaque message porte
+`seq` et `sig` (HMAC-SHA256, voir `docs/integrite-trames.md`) ; sinon rien n'est ajouté (mode démo du serveur).
 """
 
 from __future__ import annotations
@@ -99,6 +102,7 @@ def main() -> None:
     ap.add_argument("--speed", type=float, default=1.0)
     ap.add_argument("--vitaldb", action="store_true", help="Tenter le rejeu VitalDB pour les profils (sinon synthétique)")
     ap.add_argument("--api-key", default="")
+    ap.add_argument("--hmac-key", default=None, help="Clé de signature des trames (défaut : variable d'environnement EDGE_HMAC_KEY)")
     ap.add_argument("--list", action="store_true", help="Lister les scénarios")
     ap.add_argument("--duration", type=float, default=0, help="Arrêt après N secondes (0 = infini)")
     args = ap.parse_args()
@@ -133,7 +137,8 @@ def main() -> None:
         logger.info("Transport HTTP %s", transport.url)
 
     rooms = [r.strip() for r in args.rooms.split(",") if r.strip()]
-    engine = SimEngine(publish=transport.publish, rooms=rooms, speed=args.speed)
+    engine = SimEngine(publish=transport.publish, rooms=rooms, speed=args.speed, hmac_key=args.hmac_key)
+    logger.info("Intégrité des trames : %s", "signature HMAC-SHA256 active" if engine.signer is not None and engine.signer.enabled else "aucune clé (EDGE_HMAC_KEY), trames non signées")
     engine_holder["engine"] = engine
     if hasattr(transport, "on_cmd"):
         transport.on_cmd = engine.handle_command

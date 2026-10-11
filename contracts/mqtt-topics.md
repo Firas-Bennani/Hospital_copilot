@@ -64,3 +64,12 @@ Un lot est accepté sous la forme `{ "messages": [ {topic, payload}, ... ] }`.
 ## Messages WebSocket `/ws` (serveur → navigateur)
 Existants : `init` (patients, mode, event_history, room_states) · `patient_event` · `reset` · `mode_change` · `pong`.
 Nouveaux : `room_state` · `agent_log` · `agent_status` · `risk` · `notification` · `staff_visit` · `kpi` · `device_reading` · `cmd_ack` · `scenario`.
+
+## Intégrité des trames (V3) — `seq`, `ts`, `sig`
+Champs ajoutés DANS le payload par les émetteurs (edge, simulateur, `camera_loop`) quand la clé partagée `EDGE_HMAC_KEY` est définie ; tous les schémas les acceptent (`additionalProperties: true`).
+- `seq` : entier strictement croissant par émetteur (émetteur = `source` + chambre).
+- `ts` : l'horodatage déjà présent (ISO 8601 UTC) ; c'est lui qui est signé.
+- `sig` : HMAC-SHA256 en hexadécimal minuscule de `topic + "\n" + canonical_json(payload sans "sig")`, avec `canonical_json(obj) = json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)` (octets UTF-8).
+- `measuredAt` (optionnel) : heure de mesure d'origine d'un message renvoyé depuis la file hors ligne de l'edge (son `ts` est alors l'heure d'envoi).
+
+Primitives : `contracts/integrity.py` (bibliothèque standard uniquement). Côté serveur (`dashboard/app/ingest/integrity.py`), avec une clé : trame non signée, signature invalide, `ts` de plus de 30 s (`FRAME_MAX_AGE_S`) ou séquence déjà vue → rejet (`401` sur `POST /api/ingest` si rien n'est accepté dans le lot ; ignorée en MQTT), compté dans `GET /api/integrity`. Sans clé : mode démo, tout est accepté avec un avertissement. Non concernés : `…/cmd/{equipment}` (serveur → edge) et `hackcure/sim/scenario`. Détails : `docs/integrite-trames.md`.
