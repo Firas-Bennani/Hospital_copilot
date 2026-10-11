@@ -40,10 +40,18 @@ class ConnectionManager:
     async def broadcast(self, message: dict[str, Any]) -> None:
         """Envoie un message JSON à tous les clients connectés."""
         data = json.dumps(message, default=str)
+        pseudo: str | None = None  # version pseudonymisée, calculée seulement si un client sans `view_identity` est connecté
         disconnected: list[WebSocket] = []
         for connection in list(self.active_connections):
             try:
-                await connection.send_text(data)
+                from . import privacy
+
+                if privacy.can_see_identity(self.roles.get(id(connection))):
+                    await connection.send_text(data)
+                else:
+                    if pseudo is None:
+                        pseudo = json.dumps(privacy.scrub(json.loads(data)), default=str)
+                    await connection.send_text(pseudo)
             except Exception:
                 disconnected.append(connection)
         for conn in disconnected:

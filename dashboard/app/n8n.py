@@ -70,6 +70,9 @@ def info() -> dict[str, Any]:
 
 async def send_event(name: str, payload: dict[str, Any], attempts: int = 3) -> bool:
     """Envoie un événement au webhook n8n `name`. 3 tentatives ; False ⇒ repli local."""
+    from . import privacy
+
+    payload = privacy.outbound("n8n", payload)  # V3 : webhooks pseudonymisés
     if not enabled():
         return False
     url = f"{settings.n8n_base_url}/webhook/{name}"
@@ -97,6 +100,9 @@ async def send_event(name: str, payload: dict[str, Any], attempts: int = 3) -> b
 
 async def resume(resume_url: str, payload: dict[str, Any]) -> bool:
     """Reprend un nœud Wait (URL `webhook-waiting/...`)."""
+    from . import privacy
+
+    payload = privacy.outbound("n8n", payload)
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             r = await client.post(resume_url, json=payload, headers=headers())

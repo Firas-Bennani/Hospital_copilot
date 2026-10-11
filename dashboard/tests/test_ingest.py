@@ -46,10 +46,10 @@ def test_vision_fall_projects_to_legacy_patient_event(client):
         client.post("/api/ingest", json=msg("hackcure/room/103/vision/state", persons=1, patientTrackId=1, posture="lying_bed", activity="awake_bed", zone="bed", confidence=0.9))
         client.post("/api/ingest", json=msg("hackcure/room/103/vision/state", persons=1, patientTrackId=1, posture="on_floor", activity="fall", zone="floor", confidence=0.93, cvClass="patient_fallen"))
         got = {}
-        for _ in range(12):
+        for _ in range(60):  # d'autres diffusions (agents, risques, notifications) s'intercalent
             m = json.loads(ws.receive_text())
             got.setdefault(m["type"], []).append(m)
-            if "patient_event" in got and "room_state" in got:
+            if "patient_event" in got and any(x["room"] == "103" and x["posture"] == "on_floor" for x in got.get("room_state", [])):
                 break
         ev = got["patient_event"][-1]
         assert ev["patient_id"] == "patient_03" and ev["event_type"] == "fall" and ev["source"] == "simulation"

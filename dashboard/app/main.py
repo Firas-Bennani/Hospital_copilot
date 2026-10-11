@@ -60,6 +60,10 @@ async def lifespan(app: FastAPI):
         seed = _import_optional(".seed")
         if seed is not None and settings.seed_on_startup:
             seed.seed_all()
+    privacy = _import_optional(".privacy")
+    if privacy is not None:  # V3 : journaux sans nom de patient ; registre des pseudonymes tenu à jour
+        privacy.install()
+        logger.info("Pseudonymisation des sorties (LLM, n8n, Telegram, journaux) : %s", "active" if privacy.enabled() else "DÉSACTIVÉE (PSEUDONYMIZE_OUTBOUND=0)")
 
     for mod_name, starter in (
         (".ingest.mqtt", "start"),
@@ -108,6 +112,9 @@ def create_app() -> FastAPI:
     from .api import demo as demo_api
 
     app.include_router(demo_api.router)
+    privacy = _import_optional(".privacy")
+    if privacy is not None:
+        app.add_middleware(privacy.IdentityGuard)
 
     # Routeurs des phases suivantes (inclus s'ils existent)
     for name in (

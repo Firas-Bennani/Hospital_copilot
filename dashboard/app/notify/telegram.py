@@ -12,6 +12,9 @@ logger = logging.getLogger("hackcure.telegram")
 
 
 async def send_telegram(text: str) -> bool:
+    from .. import privacy
+
+    text = privacy.outbound("telegram", text)  # V3 : jamais de nom de patient hors de la plateforme
     if not settings.telegram_enabled:
         return False
     url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage"

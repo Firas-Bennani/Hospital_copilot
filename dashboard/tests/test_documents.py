@@ -97,7 +97,7 @@ def test_medical_report_draft_edit_sign_print(client, login):
     r = doc.post("/api/reports/draft", json={"admission_id": adm})
     assert r.status_code == 201
     rep = r.json()
-    assert rep["ai_draft"] and rep["status"] == "draft" and "Mohamed Ben Salah" in rep["content"] and "à compléter" in rep["content"].lower()
+    assert rep["ai_draft"] and rep["status"] == "draft" and "PAT-0001" in rep["content"] and "Mohamed Ben Salah" not in rep["content"] and "à compléter" in rep["content"].lower()
     r = doc.patch(f"/api/reports/{rep['id']}", json={"content": rep["content"] + "\n\nÉvolution : favorable."})
     assert "favorable" in r.json()["content"]
     assert login("nurse").patch(f"/api/reports/{rep['id']}", json={"content": "x"}).status_code == 403

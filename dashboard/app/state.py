@@ -210,6 +210,8 @@ async def machine_fault(room: str, label: str | None) -> None:
     patient = patients.get(pid) if pid else None
     if not patient or (bool(label) == bool(patient.get("machine_error")) and (label or "") == patient.get("machine_type", "")):
         return
+    if label and patient.get("machine_error"):  # déjà signalée (événement machine_error) : on garde le libellé d'origine
+        return
     patient["machine_error"], patient["machine_type"] = bool(label), label or ""
     if not (patient["fall_detected"] or patient["pain_detected"]):  # une chute ou une douleur garde la priorité d'affichage
         patient["state"], patient["alert_priority"] = ("machine_error", "high") if label else ("normal", "none")

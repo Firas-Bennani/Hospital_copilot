@@ -59,6 +59,10 @@ class BaseLlm:
         raise NotImplementedError
 
     async def complete_json(self, system: str, user: str, max_tokens: int = 1400) -> Optional[dict[str, Any]]:
+        from .. import privacy
+
+        # V3 : rien de nominatif ne part vers le LLM (pseudonyme, âge, sexe, données cliniques seulement)
+        system, user = privacy.outbound("llm", system), privacy.outbound("llm", user)
         try:
             text = await asyncio.wait_for(self.complete_text(system, user, max_tokens), timeout=settings.llm_timeout_s)
         except asyncio.TimeoutError:
