@@ -11,6 +11,7 @@ from typing import Any, Optional
 from ..bus import Event, bus
 from ..clinical.news2 import news2
 from ..ingest import handler
+from .. import equipment
 from .base import Agent
 
 # seuils par défaut : (type_de_risque, condition) — la sévérité fine est calculée par plans.severity_for
@@ -35,7 +36,7 @@ def limits_for(patient: Optional[dict[str, Any]]) -> dict[str, float]:
 class VitalsAgent(Agent):
     name = "VitalsAgent"
     description = "Surveille les constantes des machines : seuils par patient, tendances 10 min, NEWS2, alertes perfusion/transfusion."
-    patterns = ["hackcure/room/+/device/+", "internal/reset"]
+    patterns = ["hackcure/room/+/device/+", "internal/machine_error", "internal/reset"]
     tick_interval = 20.0
 
     def __init__(self) -> None:
@@ -124,8 +125,16 @@ class VitalsAgent(Agent):
             self.rank.clear()
             return
         p = ev.payload
+        if ev.topic == "internal/machine_error":
+            await self.on_machine_event(p)
+            return
         room, d = p["room"], p["data"]
         t, m = d["type"], d.get("metrics", {})
+        if equipment.is_fault(t, d.get("fault")):
+            if equipment.register(room, t, str(d["fault"]["code"]), str(d["fault"].get("label") or ""), "device"):
+                await self.equipment_changed(room)
+        elif equipment.clear(room, t, source="device"):
+            await self.equipment_changed(room)
         lim = self.limits(room)
         if t == "ecg" and m.get("hr") is not None:
             hr = float(m["hr"])
@@ -181,6 +190,37 @@ class VitalsAgent(Agent):
                 await self.raise_candidate(room, "transfusion_reaction", {"reaction": True, "volumeLeftMl": m.get("volumeLeftMl")}, "Réaction transfusionnelle signalée par l'appareil : arrêt immédiat requis.", min_interval=300)
             else:
                 await self.clear(room, "transfusion_reaction", "pas de réaction")
+
+    # ── pannes d'équipement (machine_error) ─────────────────────────────────
+    async def on_machine_event(self, p: dict[str, Any]) -> None:
+        """Événement `machine_error` / `recover` du pipeline d'Amal : rattaché à notre appareil de la chambre."""
+        room = str(p["room"])
+        if p.get("active"):
+            label = str(p.get("machine_type") or "")
+            changed = equipment.register(room, equipment.device_type(label), "reported", f"panne signalée ({label})" if label else "", "legacy")
+        else:
+            changed = equipment.clear(room, source="legacy")
+        if changed:
+            await self.equipment_changed(room)
+
+    async def equipment_changed(self, room: str) -> None:
+        """Un seul risque « equipment_fault » par chambre, qui liste les appareils en panne ; reflété dans la 3D."""
+        from .. import state
+
+        f = equipment.faults(room)
+        await state.machine_fault(room, equipment.describe(f) if f else None)
+        async with self.working("acting"):
+            if f:
+                details = {"summary": equipment.describe(f), "severity": equipment.severity(f),
+                           "devices": [{"device": v["device"], "type": k, "name": v["name"], "fault": v["label"], "code": v["code"], "source": v["source"]} for k, v in f.items()]}
+                await self.log(room, input=f"panne d'équipement : {details['summary']}",
+                               reasoning="Appareil signalé en panne (flux de l'appareil ou pipeline de vision). Ce n'est ni une occlusion ni une poche vide (risques de perfusion distincts). "
+                                         + ("Appareil vital : sévérité élevée." if details["severity"] == "high" else "Appareil non vital : sévérité moyenne."),
+                               output="risque candidat « equipment_fault » ; appareil de remplacement en salle Équipements (étage 1)")
+                await bus.publish("internal/risk_candidate", {"room": room, "type": "equipment_fault", "details": details, "source_agent": self.name})
+            else:
+                await self.log(room, input="appareils de nouveau en service", reasoning="Plus aucune panne signalée dans la chambre.", output="signal levé — à confirmer par un soignant")
+                await bus.publish("internal/risk_clear", {"room": room, "types": ["equipment_fault"], "reason": "appareils de nouveau en service"})
 
     async def on_tick(self) -> None:
         """NEWS2 et tendances 10 min pour chaque chambre."""

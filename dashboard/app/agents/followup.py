@@ -71,6 +71,9 @@ def verify_risk(rtype: str, rs: dict[str, Any]) -> tuple[bool, str]:
 
         n = news2(rr=v.get("rr"), spo2=v.get("spo2"), on_oxygen=bool((v.get("o2FlowLMin") or 0) > 0), sbp=v.get("sys"), hr=v.get("hr"), temp=v.get("tempC"), spo2_scale2=room_is_copd(str(rs.get("room"))))
         return n.score < 5, f"NEWS2 {n.score}"
+    if rtype == "equipment_fault":
+        f = rs.get("deviceFaults") or {}
+        return not f, ("appareils en service" if not f else "panne persistante : " + ", ".join(x.get("name", k) for k, x in f.items()))
     if rtype == "iv_empty":
         vol = v.get("ivVolumeLeftMl")
         return vol is None or vol > 100, f"volume {vol} ml"

@@ -14,10 +14,11 @@ Un lot est accepté sous la forme `{ "messages": [ {topic, payload}, ... ] }`.
 | `…/vision/state` (2 Hz) | edge / sim | `vision_state.json` | `persons`, `patientTrackId`, `posture`, `activity`, `zone`, `confidence`, `cvClass`, `floorPos{x,y}?` |
 | `…/vision/staff` | edge / sim | `vision_staff.json` | `event: staff_enter / staff_leave`, `persons`, `durationSec?` |
 | `…/vision/expression` | edge / sim | `vision_expression.json` | `expression`, `confidence` |
+| `…/vision/behavior` | edge / camera_loop | `vision_behavior.json` | `riskLevel` (`none`…`critical`), `riskScore`, `indicators[]`, `recommendations[]?`, `transformer?`, `fallProbability?` — analyse comportementale optionnelle |
 | `…/thermal` (1 Hz) | edge / sim | `thermal.json` | `skinTempC`, `maxTempC`, `calibrated` |
 | `…/env` | edge / sim | `env.json` | `tempC`, `humidity`, `motion`, `doorOpen` |
 | `…/call` | edge / sim | `call.json` | `pressed: true` |
-| `…/device/{deviceId}` (1 Hz) | sim | `device.json` | `type`, `status?`, `metrics` (par type, voir ci-dessous) |
+| `…/device/{deviceId}` (1 Hz) | sim | `device.json` | `type`, `status?`, `metrics` (par type, voir ci-dessous), `fault{code,label?}?` (panne de l'appareil) |
 | `…/safety/alarm` | edge | `safety_alarm.json` | `reason: fall / call / critical / bed_exit_night`, `localActionTaken[]`, `offline?` |
 | `…/cmd/{equipment}` | serveur → edge | `cmd.json` | `action: open / close / on / off / set`, `value?`, `requestedBy`, `reason`, `commandId?` |
 | `…/cmd/ack` | edge → serveur | `cmd_ack.json` | `equipment`, `action`, `ok`, `state`, `commandId?` |

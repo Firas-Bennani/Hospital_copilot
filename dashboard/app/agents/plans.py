@@ -28,6 +28,7 @@ TYPE_LABELS: dict[str, str] = {
     "thermal_discomfort": "Inconfort thermique",
     "local_alarm": "Alarme locale (edge)",
     "behavioral_risk": "Comportement à risque (vision)",
+    "equipment_fault": "Panne d'équipement",
     "medication_late": "Prise de médicament en retard",
     "psych_alert": "Alerte psychiatrique (idées suicidaires déclarées)",
     "psych_low_wellbeing": "Bien-être psychologique bas",
@@ -48,6 +49,8 @@ def severity_for(rtype: str, details: dict[str, Any], patient: dict[str, Any] | 
         return "critical" if int(details.get("risk") or 0) >= 80 else "high"
     if rtype == "behavioral_risk":
         return {"critical": "critical", "high": "high"}.get(str(details.get("risk_level")), "medium")
+    if rtype == "equipment_fault":  # fixé par app/equipment.py : élevé si un appareil vital est en panne
+        return "high" if details.get("severity") == "high" else "medium"
     if rtype == "news2_high":
         s = int(details.get("news2", 0))
         return "critical" if s >= 7 else ("high" if s >= 5 else "medium")
@@ -134,6 +137,12 @@ FALLBACK_PLANS: dict[str, list[dict[str, Any]]] = {
         {"text": "Surveillance continue : FC, SpO2, PA, FR, conscience."},
         {"text": "Oxygénothérapie selon prescription si SpO2 < cible."},
         {"text": "Préparer un éventuel transfert en unité de surveillance."},
+    ],
+    "equipment_fault": [
+        {"text": "Aller voir le patient : vérifier son état sans se fier à l'appareil en panne (mesure manuelle si besoin)."},
+        {"text": "Vérifier l'appareil : alimentation, câbles, capteurs, message d'erreur affiché."},
+        {"text": "Remplacer par un appareil de la salle Équipements (étage 1) et contrôler son fonctionnement."},
+        {"text": "Étiqueter l'appareil défectueux et prévenir le service biomédical."},
     ],
     "iv_empty": [
         {"text": "Vérifier la poche de perfusion et le débit."},

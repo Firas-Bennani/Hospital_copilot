@@ -78,3 +78,11 @@ rules:
 publish:
   vision_hz: 2.0
   thermal_hz: 1.0
+
+# Analyse comportementale optionnelle (immobilité, agitation, instabilité) publiée sur vision/behavior.
+# transformer: true n'a d'effet que si PyTorch, le backbone DINOv2 et les poids entraînés
+# (computer_vision/runs/patient_transformer/best_transformer.pt) sont déjà sur le disque ; rien n'est téléchargé.
+behavior:
+  enabled: true
+  transformer: true
+  window: 30

@@ -69,6 +69,7 @@ def default_room_state(room: str) -> dict[str, Any]:
         "equipment": {"window": "closed", "heater": "off", "ac": "off", "light": "off"},
         "vitals": {},
         "devices": {},
+        "deviceFaults": {},  # pannes d'équipement par type d'appareil (app/equipment.py)
         "riskLevel": "none",
         "behavior": {"risk_level": "none", "risk_score": 0.0, "indicators": [], "recommendations": []},
         "openRisks": 0,
@@ -137,6 +138,8 @@ async def handle(topic: str, payload: dict[str, Any], via: str = "http") -> dict
         await _on_vision_staff(room, payload)
     elif kind == "vision_expression":
         await _on_expression(room, payload, source)
+    elif kind == "vision_behavior":
+        await _on_vision_behavior(room, payload, source)
     elif kind == "thermal":
         _on_thermal(room, payload, source)
     elif kind == "env":
@@ -183,6 +186,23 @@ def handle_nowait(topic: str, payload: dict[str, Any], via: str = "embedded") ->
 
 
 # ── traitements par type ──────────────────────────────────────────────────────
+_behavior_calm: dict[str, bool] = {}
+
+
+async def _on_vision_behavior(room: str, p: dict[str, Any], source: str) -> None:
+    """Analyse comportementale de l'edge / camera_loop (optionnelle) → même chemin que `behavioral_risk` :
+    état legacy, `room_state.behavior`, VisionAgent → RiskAgent, PsychAgent. Un niveau calme répété ne produit rien."""
+    level = p["riskLevel"]
+    calm = level in ("none", "low")
+    if calm and _behavior_calm.get(room, True):
+        return
+    _behavior_calm[room] = calm
+    pid = state.patient_for_room(room)
+    if pid:
+        await state.process_event(pid, "behavioral_risk", source=source, confidence=float(p.get("confidence", 0.9)), risk_level="none" if calm else level,
+                                  risk_score=float(p["riskScore"]), behavior_indicators=[] if calm else list(p["indicators"]), recommendations=[] if calm else list(p.get("recommendations") or []))
+
+
 async def _on_vision_state(room: str, p: dict[str, Any], source: str) -> None:
     rs = room_state(room)
     changed = (rs["posture"], rs["activity"]) != (p["posture"], p["activity"])
@@ -254,9 +274,9 @@ def _on_env(room: str, p: dict[str, Any]) -> None:
 def _on_device(room: str, device_id: str, p: dict[str, Any]) -> None:
     rs = room_state(room)
     metrics = dict(p["metrics"])
-    entry = {"room": room, "device_id": device_id, "type": p["type"], "status": p.get("status", "running"), "metrics": metrics, "ts": p["ts"], "source": p.get("source", "sim")}
+    entry = {"room": room, "device_id": device_id, "type": p["type"], "status": p.get("status", "running"), "metrics": metrics, "ts": p["ts"], "source": p.get("source", "sim"), "fault": p.get("fault")}
     latest_device[device_id] = entry
-    rs["devices"][device_id] = {"type": p["type"], "status": entry["status"], "metrics": metrics, "ts": p["ts"]}
+    rs["devices"][device_id] = {"type": p["type"], "status": entry["status"], "metrics": metrics, "ts": p["ts"], "fault": p.get("fault")}
     now = time.time()
     for m, v in metrics.items():
         if isinstance(v, (int, float)) and not isinstance(v, bool):

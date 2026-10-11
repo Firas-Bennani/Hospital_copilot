@@ -17,7 +17,8 @@
     let mounted = false;
     let devicesCache = [];
 
-    function statusTag(s) {
+    function statusTag(s, fault) {
+        if (fault && fault.code && !(fault.code === 'occlusion' || fault.code === 'empty')) return `<span class="tag tag-danger">PANNE</span> <span class="small">${Api.esc(fault.label || fault.code)}</span>`;
         const map = { running: ['En marche', 'tag-low'], alarm: ['ALARME', 'tag-danger'], paused: ['Pause', 'tag-warn'], standby: ['Veille', ''], off: ['Arrêt', ''] };
         const [t, c] = map[s] || [s, ''];
         return `<span class="tag ${c}">${t}</span>`;
@@ -44,7 +45,7 @@
             <tr id="dev-${d.device_id}">
                 <td>${LABELS[d.type] || d.type}</td>
                 <td class="metrics">${fmtMetrics(d.type, d.metrics)}</td>
-                <td class="status">${statusTag(d.status)}</td>
+                <td class="status">${statusTag(d.status, d.fault)}</td>
             </tr>`).join('');
         return `<div class="card" data-room="${room}">
             <h3><span class="room-pill">Chambre ${room}</span> <span class="muted small" id="dev-room-ts-${room}"></span></h3>
@@ -92,7 +93,7 @@
             const row = document.getElementById(`dev-${r.device_id}`);
             if (row) {
                 row.querySelector('.metrics').innerHTML = fmtMetrics(r.type, r.metrics);
-                row.querySelector('.status').innerHTML = statusTag(r.status);
+                row.querySelector('.status').innerHTML = statusTag(r.status, r.fault);
             }
             const ts = document.getElementById(`dev-room-ts-${r.room}`);
             if (ts) ts.textContent = 'mis à jour ' + new Date(r.ts).toLocaleTimeString('fr-FR');

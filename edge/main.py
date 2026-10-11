@@ -33,6 +33,7 @@ from edge.safety.local_rules import LocalRules  # noqa: E402
 from edge.sensors import DHT22, DigitalInput  # noqa: E402
 from edge.thermal.mlx90640 import ThermalCamera  # noqa: E402
 from edge.transport import build_transport  # noqa: E402
+from edge.vision.behavior import BehaviorPublisher, build_behavior  # noqa: E402
 from edge.vision.expression import ExpressionEstimator  # noqa: E402
 from edge.vision.persons import PersonTracker  # noqa: E402
 from edge.vision.pipeline import FrameResult, build_pipeline  # noqa: E402
@@ -117,6 +118,7 @@ class Edge:
         z = cfg.get("zones", {})
         self.zones = ZoneTracker({k: v for k, v in z.items() if isinstance(v, list)}, float(z.get("hysteresis_s", 2.0)))
         self.persons = PersonTracker(z.get("bed", []))
+        self.behavior = BehaviorPublisher(build_behavior(cfg), self.room)  # optionnel : sans effet si indisponible
         self.expression = ExpressionEstimator(cfg.get("expression", {}).get("model"), float(cfg.get("expression", {}).get("every_s", 3.0)))
         th = cfg.get("thermal", {})
         self.thermal = ThermalCamera(enabled=th.get("enabled", True) and not args.no_thermal, i2c_address=int(th.get("i2c_address", 0x33)), refresh_hz=int(th.get("refresh_hz", 4)),
@@ -185,6 +187,10 @@ class Edge:
             moving = False
         zone = self.zones.update(test_pt, ts)
         st = map_to_contract(cv_class, zone, fall_confirmed=fall, still_seconds=ts - self.still_since, last_zone=self.zones.last_known, moving=moving, sleeping_after_s=self.sleeping_after)
+        if patient:
+            beh = self.behavior.step(frame, patient.bbox, cv_class or st.posture, float(conf), disc, st.posture in ("lying_bed", "sitting_bed"), ts)
+            if beh:
+                self._publish(f"hackcure/room/{self.room}/vision/behavior", {"ts": iso_now(), "source": self.source, **beh})
         new = st.as_tuple()
         if new != self.state:
             self.on_transition(self.state, new, ts)

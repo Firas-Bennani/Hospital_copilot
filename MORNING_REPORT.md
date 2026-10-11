@@ -142,7 +142,7 @@ git checkout feat/v2
 .\scripts\run-demo.ps1 -Port 8010 -Reset  # si le port 8000 est pris par un autre projet
 npx n8n                                     # puis, dans un autre terminal :
 .\n8n\import.ps1                           # importe et active les 15 workflows (-Check pour vérifier, -PlatformUrl http://127.0.0.1:8010 si besoin)
-.venv\Scripts\python -m pytest dashboard/tests computer_vision/tests edge/tests simulator/tests -q   # 200 tests
+.venv\Scripts\python -m pytest dashboard/tests computer_vision/tests edge/tests simulator/tests -q   # 215 tests
 ```
 Linux / macOS : `./scripts/run-demo.sh --reset`, `./n8n/import.sh`.
 Démo : bouton **Lancer la démo → `full_demo_v2`** (8 min, tout est joué automatiquement) ; version jury de 3 minutes dans `docs/demo_v2.md`.
@@ -174,10 +174,17 @@ Démo : bouton **Lancer la démo → `full_demo_v2`** (8 min, tout est joué aut
 - **n8n** : un workflow par agent — 13 agents, **15 workflows actifs**, chacun avec une exécution réelle vérifiée ; repli local automatique ; vue **Carte des agents**.
 - **`full_demo_v2`** : scénario de 8 min avec pilote automatique (`dashboard/app/demo_v2.py`) ; test d'intégration `dashboard/tests/test_v2_full_demo.py`. **Passages réels** sur le port 8010 (n8n, Telegram) : trois passages complets de `full_demo_v2` ; au dernier (exécutions n8n 361–412) les 11 gestes du pilote sont joués, la mission est admise, le questionnaire rempli, le parcours fièvre mené au bout, la prise administrée, et 16 des 17 risques ouverts pendant la démo (fièvre, prédictions, NEWS2, chute, bien-être…) finissent « résolus et vérifiés », sans réouverture ; le dernier est un « sortie du lit » de fond en 101 (patient au fauteuil), hors scénario. Les deux premiers passages ont obtenu des réponses de Claude validées (14 exécutions : `risk-triage`, `fever-pathway`, `diagnostics-live`, `ambulance-dispatch`, `psych-monitoring`, `vision-watch`) ; **au dernier, l'API Anthropic a répondu « credit balance is too low » : tous les textes d'IA sont des réponses de secours** (voir `BLOCKERS.md`). La détection, la sévérité et la vérification, déterministes, n'en dépendent pas.
 
+**Synchronisation Amal du 11/10 (`384ae87`, `12e1eb2`)**
+- **Panne de machine** (`machine_error`) : reliée à nos appareils. L'événement d'Amal (bouton « Panne machine », `/api/yolo/event`) **et** le flux d'un appareil (champ `fault` du contrat `device`) donnent le même risque **« Panne d'équipement »** (un par chambre, élevé si l'appareil est vital), affiché sur l'appareil dans la chambre et dans la **salle Équipements de l'étage 1**, notifié à l'infirmier, avec son scénario de résolution `equipment_resolves`. Pas de doublon avec `iv_empty` / `iv_occlusion`. Scénario `machine_error_103` ; une panne est aussi jouée dans `full_demo_v2`.
+- **Analyse comportementale optionnelle** : `risk_analyzer` et `agent_adapter` d'Amal, assemblés par `computer_vision/src/behavior.py`, alimentent `behavioral_risk` depuis l'edge et `camera_loop.py` (nouveau message `vision/behavior`) → VisionAgent → risque, et un facteur du PsychAgent (agitation, immobilité prolongée). `camera_loop.py` est la fusion de sa réécriture et de notre publication aux contrats.
+- **Vision Transformer (DINOv2)** : code intégré, **non exécuté ici** — les poids entraînés ne sont pas dans le dépôt et PyTorch n'est pas installé dans `.venv`. Le repli est automatique et testé : l'analyse tourne sur le détecteur seul, sans erreur, sans téléchargement. Pour l'activer : installer PyTorch, déposer `computer_vision/runs/patient_transformer/best_transformer.pt` et avoir le backbone dans le cache torch hub.
+- Vérifié avec `LLM_PROVIDER=mock` et `N8N_ENABLED=false` (pas de crédit d'API) : 215 tests verts, captures `84` (non-régression RDC / étage 1 / éclaté) et `85…88` (panne de machine).
+
 ## V2.4 Ce qui est simulé
 
 - **Toutes les données patients sont fictives** (identités, historique de 15 ans, biologie, imagerie) et générées de façon déterministe.
 - **Appareils** : oxymètre, glucomètre, ECG / ST, perfusion, température centrale, ambiance — tous simulés (seule la chambre 101 peut recevoir un vrai Raspberry Pi).
+- **Pannes d'appareil** : simulées (action `device_fault` du simulateur) ; aucun appareil réel n'est branché.
 - **Résultats de laboratoire** : simulés (délai `FEVER_LAB_DELAY_S`, 30 s en démo), cohérents avec le tableau clinique.
 - **Soignants** : en simulation, « Je prends en charge » fait entrer un soignant virtuel ; dès qu'un edge réel parle pour la chambre, rien n'est simulé.
 - **Dans `full_demo_v2`**, les gestes humains (sortie, départ de l'ambulance, questionnaire, bilan clinique, validation, ordonnance, administration, prise en charge) sont joués par le pilote **à travers l'API**, et tracés « Démo V2 — geste simulé ».

@@ -9,7 +9,13 @@
     "source": { "type": "string" },
     "type": { "enum": ["iv_pump", "nutrition_pump", "transfusion", "bp", "ecg", "oxygen", "spo2", "thermometer", "glucometer"] },
     "status": { "enum": ["running", "paused", "alarm", "off", "standby"] },
-    "metrics": { "type": "object" }
+    "metrics": { "type": "object" },
+    "fault": {
+      "description": "Panne de l'appareil (absent ou null = en service). L'occlusion et la poche vide d'une pompe passent par metrics, pas par fault.",
+      "type": ["object", "null"],
+      "required": ["code"],
+      "properties": { "code": { "type": "string" }, "label": { "type": "string" } }
+    }
   },
   "allOf": [
     { "if": { "properties": { "type": { "const": "iv_pump" } } },

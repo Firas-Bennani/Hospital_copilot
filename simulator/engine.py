@@ -111,6 +111,7 @@ class VirtualRoom:
     reaction: bool = False
     call_pressed: bool = False
     device_status: dict[str, str] = field(default_factory=dict)
+    faults: dict[str, dict[str, str]] = field(default_factory=dict)  # pannes d'appareil : {type: {code, label}}
 
     # cadence des publications
     _next: dict[str, float] = field(default_factory=dict)
@@ -338,6 +339,9 @@ class VirtualRoom:
             (f"{pre}/{self.room}-spo2", {"type": "spo2", "status": "running", "metrics": {"spo2": round(v["spo2"])}}),
             (f"{pre}/{self.room}-thermometer", {"type": "thermometer", "status": "running", "metrics": {"tempC": round(v["temp"], 1)}}),
         ]
+        for _, payload in msgs:  # appareil en panne : état « alarm » + champ fault (contrat device.json)
+            if payload["type"] in self.faults:
+                payload["status"], payload["fault"] = "alarm", dict(self.faults[payload["type"]])
         return [(t, {"ts": ts, "source": source, **payload}) for t, payload in msgs]
 
 
@@ -572,6 +576,13 @@ class SimEngine:
                     rr.set_posture("lying_bed", "sleeping", "bed")
         elif action == "device_status":
             r.device_status[params["device"]] = params["status"]
+        elif action == "device_fault":  # panne d'un appareil (code : power, motor, sensor, calibration, battery, comm)
+            r.faults[params["device"]] = {"code": str(params.get("code", "reported")), "label": str(params.get("label", ""))}
+        elif action == "device_clear":  # appareil remplacé ou réparé (tous si `device` est absent)
+            if params.get("device"):
+                r.faults.pop(params["device"], None)
+            else:
+                r.faults.clear()
         elif action == "noop":
             pass
         else:
@@ -585,6 +596,7 @@ class SimEngine:
         r.occupied = occupied
         if occupied:
             r.trends.clear()
+            r.faults.clear()
             r.__post_init__()
             r.set_posture("lying_bed", "awake_bed", "bed")
             r.expression, r.staff_inside, r.persons, r.seizure_motion = "neutral", False, 1, 0.0

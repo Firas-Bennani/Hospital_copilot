@@ -4,8 +4,8 @@
 const DemoLauncher = (() => {
     'use strict';
     const ICON = { full_demo_v2: '🌟', full_demo: '🎬', fall_demo: '🚨', nurse_resolves: '🧑‍⚕️', sepsis_trend: '🦠', iv_empty: '💧', fever_101: '🔥', room_overheat_102: '☀️', desaturation_103: '🫁', cardiac_event_102: '❤️',
-        hypoglycemia_104: '🩸', seizure_103: '⚡', deterioration_101: '📉', normal_night: '🌙', stop: '⏹️' };
-    const ORDER = ['full_demo_v2', 'full_demo', 'fall_demo', 'fever_101', 'room_overheat_102', 'desaturation_103', 'sepsis_trend', 'cardiac_event_102', 'hypoglycemia_104', 'seizure_103', 'deterioration_101', 'iv_empty', 'normal_night', 'stop'];
+        hypoglycemia_104: '🩸', seizure_103: '⚡', deterioration_101: '📉', machine_error_103: '⚙️', normal_night: '🌙', stop: '⏹️' };
+    const ORDER = ['full_demo_v2', 'full_demo', 'fall_demo', 'fever_101', 'room_overheat_102', 'desaturation_103', 'sepsis_trend', 'cardiac_event_102', 'hypoglycemia_104', 'seizure_103', 'deterioration_101', 'machine_error_103', 'iv_empty', 'normal_night', 'stop'];
     let scenarios = [];
     let current = null;
 

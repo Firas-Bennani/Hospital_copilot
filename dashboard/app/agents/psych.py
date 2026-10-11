@@ -42,6 +42,7 @@ class RoomSignals:
 
     def __init__(self) -> None:
         self.expr: deque[str] = deque(maxlen=240)
+        self.behavior: deque[str] = deque(maxlen=120)  # indicateurs de l'analyse comportementale (vision)
         self.night_exits = 0
         self.night_toilets = 0
         self.night_s = 0.0
@@ -52,6 +53,9 @@ class RoomSignals:
 
     def counts(self) -> dict[str, int]:
         return {"sad": sum(1 for e in self.expr if e == "sad"), "pain": sum(1 for e in self.expr if e == "pain"), "fear": sum(1 for e in self.expr if e in ("fear", "anger")), "total": len(self.expr)}
+
+    def behavior_counts(self) -> dict[str, int]:
+        return {"agitation": sum(1 for b in self.behavior if "agitation" in b), "immobility": sum(1 for b in self.behavior if "immobility" in b), "instability": sum(1 for b in self.behavior if "instability" in b)}
 
     def sleep_hours(self) -> Optional[float]:
         return round(8.0 * self.sleep_s / self.night_s, 1) if self.night_s >= 60 else None
@@ -74,7 +78,7 @@ def score_out(s: PsychScore) -> dict[str, Any]:
 class PsychAgent(Agent):
     name = "PsychAgent"
     description = "Propose le questionnaire d'admission et suit le bien-être psychologique (dépression, anxiété, insomnie) à partir des questionnaires, de la vision, du sommeil et des constantes. Jamais un diagnostic."
-    patterns = ["hackcure/room/+/vision/state", "hackcure/room/+/vision/expression", "internal/psych/questionnaire", "internal/reset"]
+    patterns = ["hackcure/room/+/vision/state", "hackcure/room/+/vision/expression", "internal/psych/questionnaire", "internal/behavior", "internal/reset"]
 
     def __init__(self) -> None:
         super().__init__()
@@ -96,6 +100,9 @@ class PsychAgent(Agent):
             return
         if ev.topic == "internal/psych/questionnaire":
             await self.on_questionnaire(int(ev.payload["id"]))
+            return
+        if ev.topic == "internal/behavior":  # risque comportemental (pipeline de vision) : agitation, immobilité prolongée…
+            self.sig(str(ev.payload["room"])).behavior.extend(str(i) for i in (ev.payload.get("indicators") or []))
             return
         room, kind, d = ev.payload["room"], ev.payload["kind"], ev.payload["data"]
         s = self.sig(room)
@@ -170,14 +177,14 @@ class PsychAgent(Agent):
             q = s.exec(select(PsychQuestionnaire).where(PsychQuestionnaire.admission_id == adm.id, PsychQuestionnaire.status == "completed").order_by(PsychQuestionnaire.id.desc())).first()
             psy_hist = " ".join(e.content for e in s.exec(select(MedicalRecordEntry).where(MedicalRecordEntry.patient_pk == p.id, MedicalRecordEntry.type == "psychologie")).all())
             inp = {"questionnaire": json.loads(q.scores_json) if q else None, "expr": sig.counts(), "night_exits": sig.night_exits, "night_toilets": sig.night_toilets, "sleep_hours": sig.sleep_hours(),
-                   "vitals": room_vitals(room), "history": f"{p.history} {psy_hist}"}
+                   "behavior": sig.behavior_counts(), "vitals": room_vitals(room), "history": f"{p.history} {psy_hist}"}
             res = rules.compute(inp)
             prev = self.last.get(room)
             if not force and prev and abs(prev[0] - res["wellbeing"]) < 3 and prev[1] == res["level"]:
                 return
             self.last[room] = (res["wellbeing"], res["level"])
             detail = {k: res[k] for k in ("depression", "anxiety", "insomnia")}
-            detail.update(conduct=rules.conduct(res), inputs={"night_exits": sig.night_exits, "night_toilets": sig.night_toilets, "sleep_hours": sig.sleep_hours(), "expressions": sig.counts(), "questionnaire": bool(q)}, q9_positive=res["q9_positive"])
+            detail.update(conduct=rules.conduct(res), inputs={"night_exits": sig.night_exits, "night_toilets": sig.night_toilets, "sleep_hours": sig.sleep_hours(), "expressions": sig.counts(), "behavior": sig.behavior_counts(), "questionnaire": bool(q)}, q9_positive=res["q9_positive"])
             row = PsychScore(patient_pk=p.id, admission_id=adm.id, room_code=room, wellbeing=res["wellbeing"], level=res["level"], detail_json=json.dumps(detail, ensure_ascii=False))
             s.add(row)
             s.flush()

@@ -16,12 +16,13 @@ router = APIRouter(tags=["legacy"])
 
 class DemoEvent(BaseModel):
     patient_id: str
-    event_type: str  # "fall", "pain", "fall_and_pain", "recover", "behavioral_risk"
+    event_type: str  # "fall", "pain", "fall_and_pain", "recover", "behavioral_risk", "machine_error"
     confidence: float = 0.90
     risk_level: str = "none"  # none, low, moderate, high, critical
     risk_score: float = 0.0
     behavior_indicators: list[str] = []
     recommendations: list[str] = []
+    machine_type: str = ""  # ex. "IV Pump", "ECG Monitor" (machine_error)
 
 
 class ModeSwitch(BaseModel):
@@ -87,6 +88,7 @@ async def trigger_demo_event(event: DemoEvent):
         risk_score=event.risk_score,
         behavior_indicators=event.behavior_indicators,
         recommendations=event.recommendations,
+        machine_type=event.machine_type,
     )
     return JSONResponse(content={"status": "ok", "event": event.event_type})
 
@@ -117,5 +119,6 @@ async def receive_yolo_event(event: DemoEvent):
         risk_score=event.risk_score,
         behavior_indicators=event.behavior_indicators,
         recommendations=event.recommendations,
+        machine_type=event.machine_type,
     )
     return JSONResponse(content={"status": "ok"})

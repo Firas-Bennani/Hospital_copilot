@@ -193,3 +193,24 @@ def test_http_transport_offline_queue(tmp_path):
     assert json.loads(q.read_text(encoding="utf-8").splitlines()[0])["topic"].endswith("/safety/alarm")
     q2 = OfflineQueue(str(q))
     assert len(q2) == 1 and q2.drain()[0]["payload"]["reason"] == "fall" and len(q2) == 0
+
+
+def test_behavior_publisher_is_optional_and_follows_the_contract():
+    import json
+
+    import numpy as np
+
+    from edge.vision.behavior import BehaviorPublisher, build_behavior
+
+    assert build_behavior({"behavior": {"enabled": False}}) is None
+    assert BehaviorPublisher(None, "101").step(np.zeros((480, 640, 3), np.uint8), (10, 10, 100, 200), "standing", 0.9, False, False, 1.0) is None
+    analyzer = build_behavior({})                       # sans poids ni PyTorch : analyse temporelle seule, sans erreur
+    assert analyzer is not None and analyzer.mode == "temporal"
+    pub = BehaviorPublisher(analyzer, "101")
+    frame = np.zeros((480, 640, 3), np.uint8)
+    first = pub.step(frame, (100, 100, 200, 300), "patient_lying", 0.9, False, True, 10.0)
+    assert first and first["riskLevel"] == "low" and first["transformer"] is False
+    assert pub.step(frame, (100, 100, 200, 300), "patient_lying", 0.9, False, True, 10.1) is None      # échantillonnage
+    assert pub.step(frame, (100, 100, 200, 300), "patient_lying", 0.9, False, True, 11.0) is None      # pas de changement
+    schema = json.loads((ROOT / "contracts" / "schemas" / "vision_behavior.json").read_text(encoding="utf-8"))
+    assert set(schema["required"]) - {"ts", "source"} <= set(first)

@@ -100,9 +100,23 @@
                     <button class="demo-btn demo-btn-both" data-event="fall_and_pain">
                         🚨 Chute + douleur
                     </button>
+                    <button class="demo-btn demo-btn-machine" data-event="machine_error">
+                        ⚙️ Panne machine
+                    </button>
                     <button class="demo-btn demo-btn-recover" data-event="recover">
                         ✅ Récupération
                     </button>
+                </div>
+                <div id="demo-machine-select" style="margin-bottom: 0.6rem;">
+                    <label>Appareil en panne :</label>
+                    <select id="demo-machine-type">
+                        <option value="IV Pump">💉 Pompe à perfusion</option>
+                        <option value="ECG Monitor">📊 Moniteur ECG</option>
+                        <option value="Blood Pressure Monitor">🩸 Tensiomètre</option>
+                        <option value="Infusion Pump">💧 Pompe de nutrition</option>
+                        <option value="Urine Bag">🧪 Poche à urine</option>
+                        <option value="Thermometer">🌡️ Thermomètre</option>
+                    </select>
                 </div>
                 <div class="demo-actions">
                     <button id="btn-auto-demo" class="demo-btn demo-btn-auto">
@@ -233,6 +247,7 @@
     <script src="/static/js/panel-tabs.js"></script>
     <script src="/static/js/staff-avatars.js"></script>
     <script src="/static/js/equipment.js"></script>
+    <script src="/static/js/equipment-faults.js"></script>
     <script src="/static/js/room-live.js"></script>
     <script src="/static/js/kpi-bar.js"></script>
     <script src="/static/js/sensor-panel.js"></script>

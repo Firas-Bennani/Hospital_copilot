@@ -43,6 +43,9 @@ def _fresh_patient(base: dict[str, Any]) -> dict[str, Any]:
         "risk_score": 0.0,
         "behavior_indicators": [],
         "recommendations": [],
+        # panne d'équipement (Amal 384ae87)
+        "machine_error": False,
+        "machine_type": "",
     }
 
 
@@ -111,6 +114,7 @@ async def process_event(
     risk_score: float = 0.0,
     behavior_indicators: list | None = None,
     recommendations: list | None = None,
+    machine_type: str = "",
 ) -> dict[str, Any] | None:
     """Met à jour l'état d'un patient et diffuse `patient_event` (comportement d'origine + champs de risque comportemental)."""
     if patient_id not in patients:
@@ -138,8 +142,13 @@ async def process_event(
         pass  # met à jour le risque sans forcer chute ni douleur
     elif event_type == "recover":
         patient["fall_detected"], patient["pain_detected"] = False, False
+        patient["machine_error"], patient["machine_type"] = False, ""
         patient["state"], patient["alert_priority"] = "normal", "none"
         risk_level, risk_score, behavior_indicators, recommendations = "none", 0.0, [], []
+    elif event_type == "machine_error":
+        patient["machine_error"], patient["machine_type"] = True, machine_type
+        patient["state"], patient["alert_priority"] = "machine_error", "high"
+        risk_level = "high" if risk_level == "none" else risk_level
     else:
         logger.warning("Unknown event type: %s", event_type)
         return None
@@ -166,6 +175,8 @@ async def process_event(
         "risk_score": risk_score,
         "behavior_indicators": behavior_indicators,
         "recommendations": recommendations,
+        "machine_error": patient.get("machine_error", False),
+        "machine_type": patient.get("machine_type", ""),
         "timestamp": now,
         "room": patient.get("room"),
     }
@@ -187,8 +198,34 @@ async def process_event(
             await manager.broadcast({"type": "behavior", "room": str(room), "patient_id": patient_id, **behavior})
         if event_type in ("behavioral_risk", "recover"):
             await bus.publish("internal/behavior", {"room": str(room), "patient_id": patient_id, "event_type": event_type, **behavior})
+        if event_type in ("machine_error", "recover"):  # → VitalsAgent : risque « panne d'équipement » rattaché à l'appareil
+            await bus.publish("internal/machine_error", {"room": str(room), "patient_id": patient_id, "active": event_type == "machine_error", "machine_type": machine_type, "source": source})
     logger.info("[%s] %s: %s (conf=%.2f, risk=%s)", source.upper(), patient_id, event_type, confidence, risk_level)
     return event
+
+
+async def machine_fault(room: str, label: str | None) -> None:
+    """Reflète dans l'état legacy (cartes, 3D d'Amal) une panne détectée par le flux d'un appareil, ou sa levée."""
+    pid = patient_for_room(room)
+    patient = patients.get(pid) if pid else None
+    if not patient or (bool(label) == bool(patient.get("machine_error")) and (label or "") == patient.get("machine_type", "")):
+        return
+    patient["machine_error"], patient["machine_type"] = bool(label), label or ""
+    if not (patient["fall_detected"] or patient["pain_detected"]):  # une chute ou une douleur garde la priorité d'affichage
+        patient["state"], patient["alert_priority"] = ("machine_error", "high") if label else ("normal", "none")
+    now = now_iso()
+    patient["last_event_time"] = now
+    event = {
+        "type": "patient_event", "patient_id": pid, "event_type": "machine_error" if label else "machine_repaired", "source": "device",
+        "fall_detected": patient["fall_detected"], "pain_detected": patient["pain_detected"], "state": patient["state"], "confidence": 1.0,
+        "alert_priority": patient["alert_priority"], "risk_level": patient["risk_level"], "risk_score": patient["risk_score"],
+        "behavior_indicators": patient["behavior_indicators"], "recommendations": patient["recommendations"],
+        "machine_error": patient["machine_error"], "machine_type": patient["machine_type"], "timestamp": now, "room": str(room),
+    }
+    event_history.insert(0, event)
+    if len(event_history) > MAX_HISTORY:
+        event_history.pop()
+    await manager.broadcast(event)
 
 
 async def reset_all(source: str = "system") -> None:

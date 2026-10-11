@@ -25,7 +25,7 @@ class Sim(Player):
 
     def _on_event(self, kind, data):
         self.events.append((kind, data))
-        if kind == "resolution_step" and (data.get("params") or {}).get("hook") == "behavior_recover":
+        if kind == "resolution_step" and (data.get("params") or {}).get("hook") in ("behavior_recover", "equipment_repaired"):
             self.client.post("/api/demo/trigger", json={"patient_id": f"patient_0{data['room'][-1]}", "event_type": "recover"})
 
     def play(self, seconds, step=0.5, pace=0.07):
@@ -101,6 +101,14 @@ def _behavior(s):
     s.client.post("/api/demo/trigger", json={"patient_id": f"patient_0{s.room[-1]}", "event_type": "behavioral_risk", "risk_level": "high", "risk_score": 0.8, "behavior_indicators": ["agitation"]})
 
 
+def _device_fault(s):
+    s.engine.apply(s.room, "device_fault", device="ecg", code="power", label="défaut d'alimentation")
+
+
+def _machine_error(s):
+    s.client.post("/api/demo/trigger", json={"patient_id": f"patient_0{s.room[-1]}", "event_type": "machine_error", "machine_type": "Blood Pressure Monitor"})
+
+
 CASES = [
     # (type de risque, chambre, déclencheur, scénario de résolution, rôle intervenant)
     ("fall", "104", _fall, "fall_resolves", "nurse"),
@@ -113,10 +121,12 @@ CASES = [
     ("pain", "103", _pain, "pain_resolves", "nurse"),
     ("transfusion_reaction", "104", _transfusion, "transfusion_resolves", "duty_doctor"),
     ("behavioral_risk", "103", _behavior, "visit_resolves", "nurse"),
+    ("equipment_fault", "104", _device_fault, "equipment_resolves", "nurse"),
+    ("equipment_fault", "103", _machine_error, "equipment_resolves", "nurse"),
 ]
 
 
-@pytest.mark.parametrize("rtype,room,trigger,scenario,role", CASES, ids=[c[0] for c in CASES])
+@pytest.mark.parametrize("rtype,room,trigger,scenario,role", CASES, ids=[f"{c[0]}-{c[1]}" for c in CASES])
 def test_each_scenario_has_a_caregiver_resolution(client, login, sim, rtype, room, trigger, scenario, role):
     s = sim(room)
     s.play(3)

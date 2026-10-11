@@ -20,6 +20,7 @@ _TOPIC_RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^hackcure/room/(?P<room>\d{3})/vision/state$"), "vision_state"),
     (re.compile(r"^hackcure/room/(?P<room>\d{3})/vision/staff$"), "vision_staff"),
     (re.compile(r"^hackcure/room/(?P<room>\d{3})/vision/expression$"), "vision_expression"),
+    (re.compile(r"^hackcure/room/(?P<room>\d{3})/vision/behavior$"), "vision_behavior"),
     (re.compile(r"^hackcure/room/(?P<room>\d{3})/thermal$"), "thermal"),
     (re.compile(r"^hackcure/room/(?P<room>\d{3})/env$"), "env"),
     (re.compile(r"^hackcure/room/(?P<room>\d{3})/call$"), "call"),

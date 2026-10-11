@@ -85,6 +85,8 @@ def compute(inp: dict[str, Any]) -> dict[str, Any]:
     hist = (inp.get("history") or "").lower()
     v = inp.get("vitals") or {}
     exits, toilets, sleep_h = int(inp.get("night_exits") or 0), int(inp.get("night_toilets") or 0), inp.get("sleep_hours")
+    beh = inp.get("behavior") or {}  # analyse comportementale de la vision (optionnelle) : nombre d'observations par indicateur
+    agit, immob = int(beh.get("agitation") or 0), int(beh.get("immobility") or 0)
 
     def build(parts: list[tuple[float, str]]) -> dict[str, Any]:
         used = [(w, t) for w, t in parts if w > 0]
@@ -99,6 +101,7 @@ def compute(inp: dict[str, Any]) -> dict[str, Any]:
         (8 if sleep_h is not None and sleep_h < 5 else 0, f"sommeil court (≈ {sleep_h:.1f} h)" if sleep_h is not None else ""),
         (10 if any(k in hist for k in ("dépress", "deuil", "humeur")) else 0, "antécédent dépressif ou deuil au dossier"),
         (6 if pain >= 0.25 else 0, f"douleur visible sur {pain:.0%} des observations"),
+        (6 if immob >= 3 else 0, f"immobilité prolongée observée {immob} fois (analyse comportementale)"),
     ])
     anx = build([
         ((gad / 21 * 70) if gad is not None else 0, f"GAD-7 à {gad}/21 ({q.get('gad7', {}).get('level')})" if gad is not None else ""),
@@ -107,6 +110,7 @@ def compute(inp: dict[str, Any]) -> dict[str, Any]:
         (8 if (v.get("hr") or 0) >= 100 else 0, f"fréquence cardiaque {v.get('hr'):.0f}/min" if v.get("hr") else ""),
         (6 if (v.get("sys") or 0) >= 160 else 0, f"pression artérielle {v.get('sys'):.0f} mmHg" if v.get("sys") else ""),
         (10 if "anxi" in hist else 0, "antécédent anxieux au dossier"),
+        (min(12, agit * 4) if agit >= 2 else 0, f"agitation observée {agit} fois (analyse comportementale)"),
     ])
     ins = build([
         ((sl / 18 * 65) if sl is not None else 0, f"questionnaire de sommeil à {sl}/18 ({q.get('sleep', {}).get('level')})" if sl is not None else ""),

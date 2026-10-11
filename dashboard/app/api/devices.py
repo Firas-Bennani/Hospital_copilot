@@ -27,6 +27,7 @@ def list_devices(room: str | None = None, session: Session = Depends(get_session
             "device_id": d.device_id, "room": d.room_code, "type": d.type, "label": d.label,
             "status": live["status"] if live else d.status, "metrics": live["metrics"] if live else {},
             "ts": live["ts"] if live else (d.last_seen.isoformat() if d.last_seen else None), "live": live is not None,
+            "fault": (handler.room_state(d.room_code).get("deviceFaults") or {}).get(d.type),
         })
     return out
 

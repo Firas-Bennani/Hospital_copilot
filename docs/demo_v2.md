@@ -40,6 +40,8 @@ in-app et Telegram, revérification déterministe après le passage du soignant.
 | 3:36 | L'infirmier **administre** la prise (stock décrémenté). | Plan de soins | La prise passe dans « Administré », horodatée et signée. |
 | 3:44 | « **Je prends en charge** » sur la fièvre : le médecin de garde entre en 101. | Jumeau 3D (101) | Avatar en blouse blanche près du lit, température qui redescend, puis revérification : risque **résolu et vérifié**. |
 | 3:52 | Chambre 102 : la tension baisse, le pouls et la fréquence respiratoire montent. | **Prédictions** (102) | **Sepsis : risque 0–100 qui grimpe, fenêtre « crise estimée dans ~X–Y min »**, confiance, facteurs (qSOFA, NEWS2) ; alerte infirmiers puis médecin de garde (`crisis-prediction`). |
+| 4:22 | Chambre 104 : **panne de machine** — le tensiomètre se met en défaut (brassard déconnecté). | **Jumeau 3D** (104) puis **Étage 1 → Équipements** | Bandeau orange « MACHINE FAILURE », carte patient orange, engrenage et étiquette « PANNE D'ÉQUIPEMENT » au-dessus de la potence ; dans la salle Équipements, le tableau du parc indique la chambre et le poste de l'appareil de remplacement. Risque « Panne d'équipement », infirmier notifié. |
+| 5:00 | « Je prends en charge » en 104 : l'infirmier vérifie la patiente, remplace l'appareil, sort. | Paramètres des machines (104) | L'appareil passe de « PANNE » à « En marche » ; risque revérifié : résolu. |
 | 5:18 | « Je prends en charge » en 102 : le médecin de garde intervient, les constantes se corrigent. | Diagnostics live (102) | Hypothèses avec éléments pour / contre ; fil médecin ↔ infirmier. |
 | 5:26 | Chambre 103 : le patient se lève, marche, **chute** (5:42). | **Jumeau 3D** (103) | Avatar au sol, chambre violette, risque critique, plan d'action (`risk-triage`), Telegram. |
 | 6:00 | « Je prends en charge » en 103 : l'infirmier entre, relève le patient, sort. | 3D puis Centre de commande | Revérification (`risk-verify`) : **résolu et vérifié**, chambre verte. **Compte rendu d'intervention** en brouillon, à signer. |
@@ -84,13 +86,28 @@ Le menu liste d'abord les scénarios, puis les **résolutions par un soignant** 
 | `hypoglycemia_104` | 104 | Glucomètre, complication du diabète | `hypoglycemia_resolves` |
 | `seizure_103` | 103 | Mouvements rythmiques, crise d'épilepsie | `seizure_resolves` |
 | `deterioration_101` | 101 | Détérioration générale | `sepsis_resolves` |
+| `machine_error_103` | 103 | **Panne de machine** : pompe à perfusion en défaut moteur (3D, salle Équipements, risque équipement) | `equipment_resolves` |
 | `iv_empty` | 103 | Perfusion vide, occlusion | `iv_resolves` |
+
+## Montrer une panne de machine (30 secondes)
+
+Trois façons, même résultat (risque « Panne d'équipement » rattaché à l'appareil, 3D, notification de l'infirmier) :
+
+1. **Lancer la démo → `machine_error_103`** : la pompe à perfusion de la 103 publie elle-même sa panne (défaut moteur).
+2. Panneau **Contrôles de démo** (en bas à gauche) : choisir le patient et l'appareil, bouton **⚙️ Panne machine** (événement `machine_error` du pipeline d'Amal) ; **✅ Récupération** remet l'appareil en service.
+3. Elle est aussi dans `full_demo_v2` (tensiomètre de la 104, à 4:22).
+
+À montrer : la chambre (bandeau du moniteur, engrenage, étiquette), **Étage 1 → Équipements** (tableau du parc et repère vert sur le poste de
+remplacement), **Paramètres des machines** (étiquette « PANNE »), **Centre de commande** (plan : voir le patient, vérifier l'appareil, le remplacer,
+prévenir le biomédical). « Je prends en charge » fait entrer l'infirmier ; à sa sortie le risque est revérifié.
+Une occlusion ou une poche vide ne sont pas des pannes : elles gardent leurs propres alertes (`iv_empty`).
 
 ## Si quelque chose ne va pas
 
 - **Textes « Réponse de secours (LLM indisponible) »** : la clé Anthropic n'a plus de crédit (c'est arrivé pendant les répétitions, un passage complet
   fait environ 50 appels). Recharger le crédit avant la démo ; sans cela tout fonctionne, mais les explications de l'IA sont génériques.
 
+- **Sans crédit d'API ni n8n** : `LLM_PROVIDER=mock` et `N8N_ENABLED=false` dans `.env` — toute la démo (dont `full_demo_v2` et la panne de machine) fonctionne, les textes d'IA sont des gabarits.
 - **n8n arrêté** : rien à faire, les agents passent en repli local (badge « repli local »), la démo continue.
 - **Pas de réseau** : la carte des ambulances n'a pas de fond, la liste des missions et l'ETA restent affichées ; le LLM passe en réponse de secours.
 - **Port 8000 pris** : `.\scripts\run-demo.ps1 -Port 8010` et `.\n8n\import.ps1 -PlatformUrl http://127.0.0.1:8010`.

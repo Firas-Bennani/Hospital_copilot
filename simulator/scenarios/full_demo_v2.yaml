@@ -1,5 +1,5 @@
 name: full_demo_v2
-description: Demo V2 complete (8 min) - admission par ambulance (GPS) puis questionnaire, fievre vraie (bilan clinique, biologique, confort), rappel de medicament, prediction de sepsis, chute, et leurs resolutions par les soignants.
+description: Demo V2 complete (8 min) - admission par ambulance (GPS) puis questionnaire, fievre vraie (bilan clinique, biologique, confort), rappel de medicament, prediction de sepsis, panne de machine, chute, et leurs resolutions par les soignants.
 room: "104"
 duration: 480
 # Les etapes "noop" avec un champ "hook" sont les gestes des humains, joues par le pilote automatique (dashboard/app/demo_v2.py)
@@ -26,6 +26,9 @@ steps:
   - { at: 232, room: "102", action: trend, metric: hr, target: 126, duration: 55, hold: 1800 }
   - { at: 232, room: "102", action: trend, metric: rr, target: 26, duration: 55, hold: 1800 }
   - { at: 240, room: "102", action: trend, metric: temp, target: 38.9, duration: 50, hold: 1800 }
+  # 5 bis. Panne de machine en 104 : le tensiometre se met en defaut -> risque equipement, infirmier, appareil de remplacement
+  - { at: 262, room: "104", action: device_fault, device: bp, code: sensor, label: "brassard deconnecte" }
+  - { at: 300, action: noop, hook: demo_ack, room: "104", types: [equipment_fault], tries: 20 }
   - { at: 318, action: noop, hook: demo_ack, room: "102", types: [predicted_sepsis, news2_high, sepsis_trend], tries: 20 }
   # 6. Chute en 103 : lever, marche, chute -> prise en charge par un infirmier
   - { at: 326, room: "103", action: posture, posture: sitting_bed, activity: awake_bed, zone: bed }

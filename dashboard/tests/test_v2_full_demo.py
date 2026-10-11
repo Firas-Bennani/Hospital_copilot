@@ -108,7 +108,8 @@ def test_full_demo_v2_end_to_end(client, server, monkeypatch):
     sim.play(260)
     hooks = [j for j in demo_v2.journal if j["hook"] == "demo_ack"]
     # fièvre, sepsis et chute sont pris en charge ; le passage du psychiatre dépend du score de bien-être (pas de risque ⇒ rien à faire)
-    assert len(hooks) == 4 and all("pris en charge" in h["result"] for h in hooks[:3]), hooks
+    assert len(hooks) == 5 and all("pris en charge" in h["result"] for h in hooks[:4]), hooks
+    assert "equipment_fault" in hooks[1]["result"] and "infirmier" in hooks[1]["result"], hooks[1]   # panne de machine en 104
     preds = client.get("/api/predictions/patient_02").json()["history"]
     assert any(h["risk"] >= 60 for h in preds["sepsis"] + preds["deterioration"]), "prédiction de sepsis / détérioration élevée attendue en 102"
 
@@ -117,8 +118,12 @@ def test_full_demo_v2_end_to_end(client, server, monkeypatch):
         return {(r["room"], r["type"]) for r in rows if (r["resolved_at"] or "") >= started}, [(r["id"], r["room"], r["type"], r["status"], r["detected_at"], r["resolved_at"], r["notes"]) for r in rows if not r["resolved_at"]]
 
     assert wait_for(lambda: state()[0] == {("103", "fall"), ("101", "fever")}, timeout=30), " ; ".join(map(str, state()[1]))
+    # la panne de machine (tensiomètre de la 104) est levée par l'infirmier, puis vérifiée
+    eq = [r for r in client.get("/api/risks?limit=200").json() if r["room"] == "104" and r["type"] == "equipment_fault" and (r["resolved_at"] or "") >= started]
+    assert eq and "vérifié" in eq[0]["resolved_by"], [r for r in client.get("/api/risks?limit=200").json() if r["type"] == "equipment_fault"]
+    assert not client.get("/api/rooms/states").json()["104"]["deviceFaults"]
     kinds = [k for k, _ in sim.events]
-    assert kinds.count("resolution_started") >= 3 and "scenario_finished" in kinds
+    assert kinds.count("resolution_started") >= 4 and "scenario_finished" in kinds
     # chaque geste simulé est passé par l'API, et un compte rendu d'intervention attend la signature
     assert {j["hook"] for j in demo_v2.journal} == set(demo_v2.HOOKS)
     assert wait_for(lambda: [r for r in client.get("/api/interventions?status=draft").json() if r["content"]], timeout=10)

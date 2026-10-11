@@ -67,6 +67,14 @@ def _run_hook(hook: str, room: str) -> None:
                 care.give(s, d, "infirmier (simulation)", "administré pendant la visite")
         manager.broadcast_nowait({"type": "care_plan", "event": "given", "room": room})
         return
+    if hook == "equipment_repaired":  # pannes signalées par le pipeline de vision (hors flux d'appareil) : levées par le soignant
+        from ..bus import bus
+
+        try:
+            asyncio.get_running_loop().create_task(bus.publish("internal/machine_error", {"room": room, "active": False, "machine_type": "", "source": "simulation"}))
+        except RuntimeError:
+            pass
+        return
     if hook == "behavior_recover":
         pid = state.patient_for_room(room)
         if pid:

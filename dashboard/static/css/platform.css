@@ -316,3 +316,5 @@ body:has(#hf-panel.hf-walking) #kpi-bar { display: none; }   /* visite à pied :
 .mission.en_route { border-color: rgba(239,68,68,.6); } .eta-big { float: right; font-size: 18px; font-weight: 800; color: #fca5a5; font-variant-numeric: tabular-nums; }
 .leaflet-container { background: #1e293b; font: inherit; }
 #demo-menu { max-height: calc(100vh - 80px); overflow-y: auto; width: 380px; }
+#demo-machine-select label { font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px; }
+#demo-machine-select select { width: 100%; }
